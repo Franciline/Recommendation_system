@@ -1,4 +1,5 @@
 trictrac_database/
 database_cleaned/
 .DS_store
+__pycache__/
 *.csv
