@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import manhattan_distances, cosine_distances
+from sklearn.metrics.pairwise import cosine_distances, euclidean_distances, manhattan_distances
 from scipy.sparse import csr_array
 
 # Comment style
@@ -66,6 +66,8 @@ def calc_similarity_matrix(matrix_ratings, dist_type: str) -> np.ndarray:
             # Users similarity (pairwise)
             # 1 - to evaluate on min distance on KNN
             similarity_matrix = cosine_distances(matrix_ratings)
+        case "euclidean":
+            similarity_matrix = euclidean_distances(matrix_ratings)
         case "manhattan":
             similarity_matrix = manhattan_distances(matrix_ratings)
         case _:
