@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_distances, euclidean_distances, manhattan_distances
+from sklearn.metrics.pairwise import cosine_distances, manhattan_distances, nan_euclidean_distances
 from scipy.sparse import csr_array
 
 # Comment style
@@ -79,10 +79,10 @@ def get_matrix_user_game(df_reviews: pd.DataFrame) -> tuple[csr_array, np.array]
     # means = df_reviews[["User id", "Rating"]].groupby("User id", as_index=True).mean()
     # Create matrix with 0 for missing values and 1 for existing values
 
-    mask_matrix = np.where(np.isnan(matrix_ratings), 0, 1)
-    non_zeros_mask = mask_matrix.nonzero()
+    nonnans = np.where(~np.isnan(matrix_ratings))
     np.nan_to_num(matrix_ratings, copy=False, nan=0.0)
 
+    # print(non_zeros_mask[0].shape, non_zeros_mask[1].shape)
     # drop games where all ratings are nan
     # matrix_ratings = df.dropna(axis=1, how='all').to_numpy()
     # users_means = np.nanmean(matrix_ratings, axis=1)[:, None]  # means by rows
@@ -92,39 +92,69 @@ def get_matrix_user_game(df_reviews: pd.DataFrame) -> tuple[csr_array, np.array]
     # csr_array((data, (row_ind, col_ind)), [shape=(M, N)])
     # rows, cols = matrix_ratings.nonzero()  # non zero values in matrix_ratings, two lines only if we save manhattan
     # non_zeros = rows.astype(np.int32), cols.astype(np.int32)
+
     non_zeros = matrix_ratings.nonzero()
     return csr_array((matrix_ratings[non_zeros], non_zeros), matrix_ratings.shape), \
-        csr_array((mask_matrix[non_zeros_mask], non_zeros_mask), mask_matrix.shape)
+        csr_array((np.ones(shape=nonnans[0].shape[0]), nonnans), matrix_ratings.shape)
 
 
-def calc_similarity_matrix(matrix_ratings, dist_type: str) -> np.ndarray:
+def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
     """Calculate similarity matrix (users). Similarity is based on a certain type of distance (e.g. euclidean, cosine).
 
+    EUCLIDEAN : 
+        If user X and user Y has rated nothing in common, then the value of the euclidean distance is nan
+        which is then replaced by 0 (to use csr_array), hence the mask matrix is needed (for prediction).
     Parameters
     ----------
-        matrix_ratings: csr_array or? np.ndarray):
+        matrix_ratings: csr_array:
             Matrix of ratings with row = user, column = game
         dist_type: str
             Type of distance which would be used as a metric for similarity between users.
     Returns
     -------
-        np.ndarray: Similarity matrix
+        if dist_type = "cos", then 
+            np.ndarray, None : Similarity matrix
+        if dist_type = "euclidean", then
+            csr_array, csr_array : Similarity matrix, mask for similarity matrix 
+
     """
 
-    similarity_matrix = None  # ? np.empty(shape = matrix_ratings.shape)
+    similarity_matrix = None
+    mask_sim_matrix = None
     match dist_type:
         case "cos":
             similarity_matrix = cosine_distances(matrix_ratings)
         case "euclidean":
-            similarity_matrix = euclidean_distances(matrix_ratings)
+            similarity_matrix, mask_sim_matrix = _euclidian_missing_vals(matrix_ratings, mask_matrix)
         case "manhattan":
             similarity_matrix = manhattan_distances(matrix_ratings)
         case _:
             pass
-    return similarity_matrix
+    return similarity_matrix, mask_sim_matrix
 
 
-def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
+def _euclidian_missing_vals(matrix_ratings, mask_matrix):
+    """
+    ATTENTION : version is not optimized for sparse matrix.
+    Calculate similarity matrix based on euclidian distance. Missing values are exluded and
+    scaled (see docs sklearn.metrics.pairwise.nan_euclidean_distances).
+    """
+
+    matrix_nans = matrix_ratings.toarray()
+    # missing_values are replaced with nan
+    matrix_nans[~mask_matrix.toarray().astype(bool)] = np.nan
+
+    similarity_matrix = nan_euclidean_distances(matrix_nans)
+    nans = np.isnan(similarity_matrix)
+    nonnans = np.where(~nans)
+
+    similarity_matrix = csr_array((similarity_matrix[nonnans], nonnans), similarity_matrix.shape)
+
+    return similarity_matrix, csr_array((np.ones(shape=(nonnans[0].shape[0],)), nonnans), similarity_matrix.shape)
+    # return similarity_matrix, csr_array((mask_sim_matrix[nonnans], nonnans), similarity_matrix.shape)
+
+
+def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, mask_sim_matrix=None) -> np.array:
     """
     Find k nearest neighbors (similarity = distance wise) for a given user (user_ind).
 
@@ -141,13 +171,21 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     -------
         np.array: Array of row indices of k nearest users.
     """
+    # row corresponding to the user
+    if isinstance(similarity_matrix, csr_array):
+        sim_user_row = similarity_matrix[user_ind].toarray()
+    else:
+        sim_user_row = similarity_matrix[user_ind].copy()
+
+    if dtype == "euclidean":
+        # values corresponding to no intersection between rated games
+        to_replace = ~mask_sim_matrix[user_ind].toarray().astype(bool)
+        sim_user_row[to_replace] = np.inf
 
     # argpartition in O(n)
-    prev_value = similarity_matrix[user_ind][user_ind]
-    similarity_matrix[user_ind][user_ind] = np.inf  # to prevent choosing user himself
-    ksmallest = np.argpartition(similarity_matrix[user_ind], kth=min(k, similarity_matrix.shape[1]))
+    sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
+    ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.shape[0]-1))
     # print(similarity_matrix[user_ind][ksmallest])
-    similarity_matrix[user_ind][user_ind] = prev_value
     return ksmallest[:k]
 
 
@@ -258,7 +296,6 @@ def predict_ratings_baseline(matrix_ratings: csr_array, mask_matrix: csr_array, 
 
     users_ratings = matrix_ratings[similar_users]             # ratings of similar users
     valid_count = mask_matrix[similar_users].sum(axis=0)      # number of existing rating (for division to calc mean)
-
     games_means = np.zeros(shape=(users_ratings.shape[1], ))  # put 0 for ratings where no ratings are known
     return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0)  # calc means
 
