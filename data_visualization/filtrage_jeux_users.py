@@ -31,7 +31,7 @@ def get_nb_users_avis(df : pd.DataFrame, depedency = False) -> np.ndarray:
         y_data_users = vect_users(x_data)
 
     else:
-        
+        return None
 
     # Création du graphique
     print("Affichage")
