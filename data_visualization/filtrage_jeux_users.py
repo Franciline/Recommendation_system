@@ -22,26 +22,25 @@ def drop_min_avis(df : pd.DataFrame, avis_min : int) -> pd.DataFrame :
     return df_copy 
 
 
-def get_nb_users_avis(df : pd.DataFrame, depedency = False) -> np.ndarray:
-    """ Retourne un array de 1 à max(nb_avis/jeux, nb_avis/user
+def get_nb_users_avis(df : pd.DataFrame, start=5, stop=100, depedency = False) -> None:
+    """ Affiche un graphique de l'évolution du nombre d'entrées conservés en fonction du nombre d'avis min par joueur et jeu
     
     Parameters:
     --------
         df : le dataframe
+        start (opt.) : min k
+        stop (opt.) : max k
+        depedency (def. False) : 
     
     Returns :
     -------
+        None -> affiche graphique
     """ 
+    x_data = np.arange(start=start,stop=stop,step=1)
     if(not(depedency)):
-        # Création de l'axe des X
-        users = df.groupby("User id").size().to_frame('size')
-        jeux = (df.groupby("Game id")).size().to_frame('size')
-        maxi = max(np.max(jeux["size"]), np.max(users["size"]))
-    
-        
-        x_data = np.arange(start=25, stop=100, step=1)
-
         # Création de l'axe des Y
+        users = df.groupby("User id").size().to_frame('size')
+        jeux = (df.groupby("Game id")).size().to_frame('size')   
         
         vect_jeux = np.vectorize(lambda x : len(jeux[jeux["size"] >= x]))
         vect_users = np.vectorize(lambda x : len(users[users["size"] >= x]))
@@ -49,7 +48,7 @@ def get_nb_users_avis(df : pd.DataFrame, depedency = False) -> np.ndarray:
         y_data_users = vect_users(x_data)
 
     else:
-        x_data = np.arange(start=25, stop=1000, step=1)
+        
         vect_jeux = np.vectorize(lambda x : (len(drop_min_avis(df,x).groupby("Game id"))))
         vect_users = np.vectorize(lambda x : (len(drop_min_avis(df,x).groupby("User id"))))
 
@@ -69,4 +68,4 @@ def get_nb_users_avis(df : pd.DataFrame, depedency = False) -> np.ndarray:
 folder = "../database_cleaned"
 avis_clean = pd.read_csv(f'{folder}/avis_clean.csv', header=None, names=["Game id", "User id", "Game name UI", "Username", "Datetime", "Rating", "Comment title", "Comment body"]).drop_duplicates()
 
-get_nb_users_avis(avis_clean, depedency=True)
+get_nb_users_avis(avis_clean,start=2, stop=25, depedency=True)
