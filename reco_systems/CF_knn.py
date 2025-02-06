@@ -298,12 +298,42 @@ def filter_games(df_reviews: pd.DataFrame, min_reviews: int) -> tuple[pd.DataFra
 
     games_reviews = df_reviews[["Game id", "User id"]].groupby("Game id", as_index=True).count()
     table_assoc_games = games_reviews.loc[games_reviews["User id"] > min_reviews].reset_index()["Game id"]
-
+    
     df_filtered = df_reviews.copy()
     df_filtered.loc[~df_filtered["Game id"].isin(table_assoc_games.values), ["Game id", "Rating"]] = np.nan
 
     return df_filtered, table_assoc_games
 
+
+def filter_users(df_reviews: pd.DataFrame, min_reviews: int) -> tuple[pd.DataFrame, pd.Series]:
+    """
+    Create a 'table' of association between users ids in database and corresponding indices for matrices, arrays.
+
+    Parameters
+    ----------
+        df_reviews: pd.DataFrame
+            avis_clean.csv
+        min_reviews: int
+            Min number of reviews that a user should have to be considered by the system.
+
+    Returns
+    -------
+        pd.DataFrame : df_reviews with some users and their ratings excluded
+        pd.Series : Association between User id (in DB) and its index which will be used in matrices, arrays etc.
+            (.index = indices used, .values = true IDs)
+    """
+
+    # for each users their number of ratings 
+    games_reviews = df_reviews[["Game id", "User id"]].groupby("User id", as_index=True).count()
+    # with reset_index, we reassociate index ignoring unwanted users in pdSeries
+    table_assoc_games = games_reviews.loc[games_reviews["Game id"] > min_reviews].reset_index()["User id"]
+
+    df_filtered = df_reviews.copy()
+    # set unwanted users ratings and id to NaN
+    df_filtered.loc[~df_filtered["User id"].isin(table_assoc_games.values), ["User id", "Rating"]] = np.nan
+
+    return df_filtered, table_assoc_games
+    
 
 def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games: np.array) -> pd.DataFrame:
     """
