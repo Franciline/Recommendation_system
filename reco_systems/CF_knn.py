@@ -34,6 +34,26 @@ def center_score(df: pd.DataFrame):
     return df, mean_score[["User id", "Average rate"]].drop_duplicates()
 
 
+def normalize(df: pd.DataFrame):
+    """
+    avis_clean
+    The df with at least 2 columns, 'User id', 'Rating', normalize the scores:
+    score xi of user i: xi = (xi - min)/(max - min) with min and max the corresponding values
+    for the user i
+    Returns the df with the scores normalized
+    """
+
+    df = df.copy(deep=True)
+    min_max = df.groupby("User id").agg({"Rating": ['min', 'max']}).reset_index()
+    min_max.columns = ["User id", "Min", "Max"]  # no index levels
+    min_max = df.merge(min_max, on="User id")
+
+    df['Rating'] = (min_max['Rating'] - min_max["Min"])/(min_max["Max"] - min_max["Min"])
+    # df['Rating'] = df['Rating'].fillna(0) # NaN from division by 0
+
+    return df, min_max[["User id", "Max", "Min"]].drop_duplicates()
+
+
 def get_matrix_user_game(df_reviews: pd.DataFrame) -> tuple[csr_array, np.array]:
     """
     Create matrix where row = user, column = game. Value in row I and column J is the rating that user I gave to the game J.
@@ -51,23 +71,30 @@ def get_matrix_user_game(df_reviews: pd.DataFrame) -> tuple[csr_array, np.array]
     """
 
     # Matrix : row = user, column = game. Missing values (user didnt evaluate the game) are filled with nan
-    df_center, means = center_score(df_reviews)
+    # df_center, means = center_score(df_reviews)
 
-    matrix_ratings = pd.pivot_table(df_center[["User id", "Game id", "Rating"]], values="Rating", dropna=False,
-                                    index="User id", columns="Game id", fill_value=0.0).to_numpy()
+    matrix_ratings = pd.pivot_table(df_reviews[["User id", "Game id", "Rating"]], values="Rating", dropna=False,
+                                    index="User id", columns="Game id", fill_value=np.nan).to_numpy()
+
+    # means = df_reviews[["User id", "Rating"]].groupby("User id", as_index=True).mean()
+    # Create matrix with 0 for missing values and 1 for existing values
+
+    mask_matrix = np.where(np.isnan(matrix_ratings), 0, 1)
+    non_zeros_mask = mask_matrix.nonzero()
     np.nan_to_num(matrix_ratings, copy=False, nan=0.0)
+
     # drop games where all ratings are nan
     # matrix_ratings = df.dropna(axis=1, how='all').to_numpy()
     # users_means = np.nanmean(matrix_ratings, axis=1)[:, None]  # means by rows
     # matrix_ratings = matrix_ratings - users_means  # remove biais
     # np.nan_to_num(matrix_ratings, copy=False, nan=0.0)  # replace nan values with 0.0
-
     # Sparse matrix (since lots of 0). Optimized on row slicing
     # csr_array((data, (row_ind, col_ind)), [shape=(M, N)])
-    # ows, cols = matrix_ratings.nonzero()  # non zero values in matrix_ratings, two lines only if we save manhattan
+    # rows, cols = matrix_ratings.nonzero()  # non zero values in matrix_ratings, two lines only if we save manhattan
     # non_zeros = rows.astype(np.int32), cols.astype(np.int32)
     non_zeros = matrix_ratings.nonzero()
-    return csr_array((matrix_ratings[non_zeros], non_zeros), matrix_ratings.shape), means["Average rate"].to_numpy()
+    return csr_array((matrix_ratings[non_zeros], non_zeros), matrix_ratings.shape), \
+        csr_array((mask_matrix[non_zeros_mask], non_zeros_mask), mask_matrix.shape)
 
 
 def calc_similarity_matrix(matrix_ratings, dist_type: str) -> np.ndarray:
@@ -87,8 +114,6 @@ def calc_similarity_matrix(matrix_ratings, dist_type: str) -> np.ndarray:
     similarity_matrix = None  # ? np.empty(shape = matrix_ratings.shape)
     match dist_type:
         case "cos":
-            # Users similarity (pairwise)
-            # 1 - to evaluate on min distance on KNN
             similarity_matrix = cosine_distances(matrix_ratings)
         case "euclidean":
             similarity_matrix = euclidean_distances(matrix_ratings)
@@ -121,7 +146,7 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     prev_value = similarity_matrix[user_ind][user_ind]
     similarity_matrix[user_ind][user_ind] = np.inf  # to prevent choosing user himself
     ksmallest = np.argpartition(similarity_matrix[user_ind], kth=min(k, similarity_matrix.shape[1]))
-    print(similarity_matrix[user_ind][ksmallest])
+    # print(similarity_matrix[user_ind][ksmallest])
     similarity_matrix[user_ind][user_ind] = prev_value
     return ksmallest[:k]
 
@@ -196,21 +221,46 @@ def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, mat
     return prediction
 
 
-def predict_ratings(weighted_means: np.ndarray, coefs: np.array = None) -> np.array:
-    """Combine several predicted ratings (weighted averages) into one.
+# def predict_ratings(weighted_means: np.ndarray, coefs: np.array = None) -> np.array:
+#     """Combine several predicted ratings (weighted averages) into one.
+
+#     Parameters
+#     ----------
+#         weighted_means
+#             Weighted average for ratings (already scaled back).
+#         coefs
+#             Coefficients (weights of each ponderation). If None, means are considered as equal.
+#     """
+
+#     if coefs is None:
+#         return np.sum(weighted_means, axis=0) / weighted_means.shape[0]
+#     m = weighted_means.shape[1]
+#     return np.sum(np.tile(coefs, (m, 1)) * weighted_means.T, axis=1)
+
+
+def predict_ratings_baseline(matrix_ratings: csr_array, mask_matrix: csr_array, similar_users: np.array) -> np.array:
+    """
+    Baseline. Predict ratings for all existing games in 'matrix_ratings'. If the rating cannot be predicted (i.e. there is no similar user
+    who has rated the game), then the rating is 0.
 
     Parameters
     ----------
-        weighted_means
-            Weighted average for ratings (already scaled back).
-        coefs
-            Coefficients (weights of each ponderation). If None, means are considered as equal.
+        matrix_ratings: csr_array
+            Matrix user-game with given ratings (0 if missing value or rating = 0)
+        mask_matrix: csr_array
+            Mask matrix (mask_matrix.shape = matrix_ratings.shape) with 1 if rating exists, 0 if not.
+        simialar_users: np.array
+            Array of users indices in 'matrix_ratings'. Ratings will be predicted based only on their ratings.
+    Returns
+    -------
+        np.array : Array of predicted ratings for each game.
     """
 
-    if coefs is None:
-        return np.sum(weighted_means, axis=0) / weighted_means.shape[0]
-    m = weighted_means.shape[1]
-    return np.sum(np.tile(coefs, (m, 1)) * weighted_means.T, axis=1)
+    users_ratings = matrix_ratings[similar_users]             # ratings of similar users
+    valid_count = mask_matrix[similar_users].sum(axis=0)      # number of existing rating (for division to calc mean)
+
+    games_means = np.zeros(shape=(users_ratings.shape[1], ))  # put 0 for ratings where no ratings are known
+    return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0)  # calc means
 
 
 def get_games_ind(predicted_ratings: np.array, n: int) -> np.array:
