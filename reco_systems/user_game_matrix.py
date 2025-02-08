@@ -56,8 +56,10 @@ def get_matrix_user_game(df_reviews: pd.DataFrame):
 
     Returns
     -------
-        csr_array: Sparse matrix (optimized on row slicing)
-        np.array : Array of ratings means for each user
+        csr_array: User-game sparse matrix
+        csr_array: Mask (sparse matrix) for user-game matrix. 1 : existing rating, 0 : missing value.
+        pd.Series : table which associate user index in matrices with his true id in DB.
+        pd.Series : table which associate game index in matrices with its true id in DB.
 
     """
 

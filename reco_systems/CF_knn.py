@@ -31,7 +31,6 @@ def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
             np.ndarray, None : Similarity matrix
         if dist_type = "euclidean", then
             csr_array, csr_array : Similarity matrix, mask for similarity matrix 
-
     """
 
     similarity_matrix = None
@@ -87,7 +86,7 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, ma
         np.array: Array of row indices of k nearest users.
     """
     # row corresponding to the user
-    if isinstance(similarity_matrix, csr_array):
+    if not isinstance(similarity_matrix, np.ndarray):
         sim_user_row = similarity_matrix[user_ind].toarray()
     else:
         sim_user_row = similarity_matrix[user_ind].copy()
@@ -96,7 +95,6 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, ma
         # values corresponding to no intersection between rated games
         to_replace = ~mask_sim_matrix[user_ind].toarray().astype(bool)
         sim_user_row[to_replace] = np.inf
-
     # argpartition in O(n)
     sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
     ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.shape[0]-1))
@@ -206,7 +204,9 @@ def predict_ratings_baseline(matrix_ratings, mask_matrix, similar_users: np.arra
             Array of users indices in 'matrix_ratings'. Ratings will be predicted based only on their ratings.
     Returns
     -------
-        np.array : Array of predicted ratings for each game.
+        np.array : Array of predicted ratings for each game
+        np.array : Games indices for which ratings could be predicted, i.e. if no similar user has rated the game, then 
+            its index wouldn't be included
     """
 
     users_ratings = matrix_ratings[similar_users]             # ratings of similar users

@@ -1,9 +1,20 @@
 import pandas as pd
 
 
-def filter_df(df_reviews: pd.DataFrame, min_reviews, max_iter=10):
+def filter_df(df_reviews: pd.DataFrame, min_reviews: int, max_iter: int = 10) -> pd.DataFrame:
     """
     Filter users & games so that in the returned dataframe each user gave at least minimum number of reviews, the same for games.
+
+    Parameters
+    ----------
+        df_reviews:
+            avis_clean.csv
+        min_reviews:int
+        max_iter:int
+    Returns
+    -------
+        pd.DataFrame : DataFrame where each user has given at least 'min reviews' reviews, the same for game (if convergenve is reached
+        beofre 'max iter' iterations). Otherwise, return dataframe resulting from 'max iter' iterations.
     """
 
     if (max_iter == 0):
