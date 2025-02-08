@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_distances, manhattan_distances, nan_euclidean_distances
+from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from scipy.sparse import csr_array
 
 # Comment style
@@ -11,91 +11,6 @@ Parameters
 Returns
 -------
 """
-
-
-def center_score(df: pd.DataFrame):
-    """
-    avis_clean
-    The df with at least 3 columns 'User id' 'Game id' 'Rating', center the scores:
-    with xi the score of user i, xi = xi - mean(i)
-
-    To avoid biais between scores
-    Returns the df with the scores centered
-    """
-    df = df.copy(deep=True)
-
-    # df with average rate of each user
-    mean_score = df[["User id", "Rating"]].groupby("User id").mean().rename(
-        columns={"Rating": "Average rate"})
-    mean_score = df.merge(mean_score, on="User id")
-    mean_score['Rating'] -= mean_score['Average rate']
-
-    df['Rating'] = mean_score['Rating']
-    return df, mean_score[["User id", "Average rate"]].drop_duplicates()
-
-
-def normalize(df: pd.DataFrame):
-    """
-    avis_clean
-    The df with at least 2 columns, 'User id', 'Rating', normalize the scores:
-    score xi of user i: xi = (xi - min)/(max - min) with min and max the corresponding values
-    for the user i
-    Returns the df with the scores normalized
-    """
-
-    df = df.copy(deep=True)
-    min_max = df.groupby("User id").agg({"Rating": ['min', 'max']}).reset_index()
-    min_max.columns = ["User id", "Min", "Max"]  # no index levels
-    min_max = df.merge(min_max, on="User id")
-
-    df['Rating'] = (min_max['Rating'] - min_max["Min"])/(min_max["Max"] - min_max["Min"])
-    # df['Rating'] = df['Rating'].fillna(0) # NaN from division by 0
-
-    return df, min_max[["User id", "Max", "Min"]].drop_duplicates()
-
-
-def get_matrix_user_game(df_reviews: pd.DataFrame) -> tuple[csr_array, np.array]:
-    """
-    Create matrix where row = user, column = game. Value in row I and column J is the rating that user I gave to the game J.
-    Missing values (if user didn't evaluate the game) are filled with zeros.
-
-    Parameters
-    ----------
-        df_reviews: DataFrame
-            avis_clean.csv
-
-    Returns
-    -------
-        csr_array: Sparse matrix (optimized on row slicing)
-        np.array : Array of ratings means for each user.
-    """
-
-    # Matrix : row = user, column = game. Missing values (user didnt evaluate the game) are filled with nan
-    # df_center, means = center_score(df_reviews)
-
-    matrix_ratings = pd.pivot_table(df_reviews[["User id", "Game id", "Rating"]], values="Rating", dropna=False,
-                                    index="User id", columns="Game id", fill_value=np.nan).to_numpy()
-
-    # means = df_reviews[["User id", "Rating"]].groupby("User id", as_index=True).mean()
-    # Create matrix with 0 for missing values and 1 for existing values
-
-    nonnans = np.where(~np.isnan(matrix_ratings))
-    np.nan_to_num(matrix_ratings, copy=False, nan=0.0)
-
-    # print(non_zeros_mask[0].shape, non_zeros_mask[1].shape)
-    # drop games where all ratings are nan
-    # matrix_ratings = df.dropna(axis=1, how='all').to_numpy()
-    # users_means = np.nanmean(matrix_ratings, axis=1)[:, None]  # means by rows
-    # matrix_ratings = matrix_ratings - users_means  # remove biais
-    # np.nan_to_num(matrix_ratings, copy=False, nan=0.0)  # replace nan values with 0.0
-    # Sparse matrix (since lots of 0). Optimized on row slicing
-    # csr_array((data, (row_ind, col_ind)), [shape=(M, N)])
-    # rows, cols = matrix_ratings.nonzero()  # non zero values in matrix_ratings, two lines only if we save manhattan
-    # non_zeros = rows.astype(np.int32), cols.astype(np.int32)
-
-    non_zeros = matrix_ratings.nonzero()
-    return csr_array((matrix_ratings[non_zeros], non_zeros), matrix_ratings.shape), \
-        csr_array((np.ones(shape=nonnans[0].shape[0]), nonnans), matrix_ratings.shape)
 
 
 def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
@@ -123,11 +38,11 @@ def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
     mask_sim_matrix = None
     match dist_type:
         case "cos":
-            similarity_matrix = cosine_distances(matrix_ratings)
+            similarity_matrix = cosine_distances(matrix_ratings.tocsr())
         case "euclidean":
             similarity_matrix, mask_sim_matrix = _euclidian_missing_vals(matrix_ratings, mask_matrix)
-        case "manhattan":
-            similarity_matrix = manhattan_distances(matrix_ratings)
+        # case "manhattan":
+        #     similarity_matrix = manhattan_distances(matrix_ratings)
         case _:
             pass
     return similarity_matrix, mask_sim_matrix
@@ -276,7 +191,7 @@ def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, mat
 #     return np.sum(np.tile(coefs, (m, 1)) * weighted_means.T, axis=1)
 
 
-def predict_ratings_baseline(matrix_ratings: csr_array, mask_matrix: csr_array, similar_users: np.array) -> np.array:
+def predict_ratings_baseline(matrix_ratings, mask_matrix, similar_users: np.array) -> np.array:
     """
     Baseline. Predict ratings for all existing games in 'matrix_ratings'. If the rating cannot be predicted (i.e. there is no similar user
     who has rated the game), then the rating is 0.
@@ -297,7 +212,8 @@ def predict_ratings_baseline(matrix_ratings: csr_array, mask_matrix: csr_array, 
     users_ratings = matrix_ratings[similar_users]             # ratings of similar users
     valid_count = mask_matrix[similar_users].sum(axis=0)      # number of existing rating (for division to calc mean)
     games_means = np.zeros(shape=(users_ratings.shape[1], ))  # put 0 for ratings where no ratings are known
-    return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0)  # calc means
+    # calc means
+    return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0), np.nonzero(valid_count)[0]
 
 
 def get_games_ind(predicted_ratings: np.array, n: int) -> np.array:
@@ -316,61 +232,6 @@ def get_games_ind(predicted_ratings: np.array, n: int) -> np.array:
 
     return np.argpartition(-predicted_ratings,  kth=min(n, predicted_ratings.size))[:n]
 
-
-def filter_games(df_reviews: pd.DataFrame, min_reviews: int) -> tuple[pd.DataFrame, pd.Series]:
-    """
-    Create a 'table' of associattion between games ids in database and corresponding indices for matrices, arrays.
-    Parameters
-    ----------
-        df_reviews: pd.DataFrame
-            avis_clean.csv
-        min_reviews: int
-            Min number of reviews that a game should have to be considered by the system.
-    Returns
-    -------
-        pd.DataFrame : df_reviews with some games excluded
-        pd.Series : Association between Game_id (in DB) and its index which will be used in matrices, arrays etc.
-            (.index = indices used, .values = true IDs)
-    """
-
-    games_reviews = df_reviews[["Game id", "User id"]].groupby("Game id", as_index=True).count()
-    table_assoc_games = games_reviews.loc[games_reviews["User id"] > min_reviews].reset_index()["Game id"]
-    
-    df_filtered = df_reviews.copy()
-    df_filtered.loc[~df_filtered["Game id"].isin(table_assoc_games.values), ["Game id", "Rating"]] = np.nan
-
-    return df_filtered, table_assoc_games
-
-
-def filter_users(df_reviews: pd.DataFrame, min_reviews: int) -> tuple[pd.DataFrame, pd.Series]:
-    """
-    Create a 'table' of association between users ids in database and corresponding indices for matrices, arrays.
-
-    Parameters
-    ----------
-        df_reviews: pd.DataFrame
-            avis_clean.csv
-        min_reviews: int
-            Min number of reviews that a user should have to be considered by the system.
-
-    Returns
-    -------
-        pd.DataFrame : df_reviews with some users and their ratings excluded
-        pd.Series : Association between User id (in DB) and its index which will be used in matrices, arrays etc.
-            (.index = indices used, .values = true IDs)
-    """
-
-    # for each users their number of ratings 
-    games_reviews = df_reviews[["Game id", "User id"]].groupby("User id", as_index=True).count()
-    # with reset_index, we reassociate index ignoring unwanted users in pdSeries
-    table_assoc_games = games_reviews.loc[games_reviews["Game id"] > min_reviews].reset_index()["User id"]
-
-    df_filtered = df_reviews.copy()
-    # set unwanted users ratings and id to NaN
-    df_filtered.loc[~df_filtered["User id"].isin(table_assoc_games.values), ["User id", "Rating"]] = np.nan
-
-    return df_filtered, table_assoc_games
-    
 
 def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games: np.array) -> pd.DataFrame:
     """
