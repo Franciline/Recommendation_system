@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.sparse import dok_array, csr_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from .CF_knn import get_KNN, predict_ratings_baseline
 # BASELINE
 
@@ -120,6 +120,7 @@ def calc_RMSE_cos(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 
     # calc rmse
     to_eval = np.intersect1d(predicted_ratings, hidden_games)
+   
     if to_eval.size != 0:
         rmse = mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
 
@@ -190,6 +191,7 @@ def calc_RMSE_eucl(user: int, matrix_ratings: csr_array, mask_ratings: csr_array
 
     # calc rmse
     to_eval = np.intersect1d(predicted_ratings, hidden_games)
+    
     if to_eval.size != 0:
         rmse = mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
         # print(matrix_ratings[user, to_eval].toarray(), inf_ratings[user, to_eval].toarray(), all_ratings[to_eval])
@@ -214,3 +216,74 @@ def calc_RMSE_eucl(user: int, matrix_ratings: csr_array, mask_ratings: csr_array
     # assert ((mask_sim_matrix.toarray() == dok_mask_sim.toarray()).all())
 
     return rmse
+
+# calculate MAE
+def calc_MAE_cos(user: int, matrix_ratings: csr_array, mask_ratings: csr_array, similarity_matrix: np.ndarray) -> float:
+    """Calculate MAE for 'user'. 
+    To calculate MAE:
+        - hide 30% of games that 'user' rated
+        - recalc similarity matrix (only rows, cols where user (=vector) participates)
+        - find similar users for 'user'
+        - predict ratings for games (try to predict for all, but if not possible, i.e. no similar user has rated this game, 
+            then 0 is given as a rating)
+        - mae is calculated only on these hidden 30% of games & ratings also could be predicted.
+
+    Parameters
+    ----------
+        user : int
+            User index in matrices
+        matrix_ratings: sparse matrix
+            User-game matrix.
+        mask_ratings : sparse matrix
+            Mask matrix for matrix_ratings to indicate 1 for true rating, 0 for non existent.
+        similarity_matrix : np.ndarray
+            Similarity matrix between users based on cosine distance.
+    Returns
+    -------
+        float : MAE calculated for 'user'.
+    """
+
+    # Conversion for efficient modification
+    dok_ratings = matrix_ratings.tolil()
+    dok_mask_ratings = mask_ratings.tolil()
+
+    if not isinstance(similarity_matrix, np.ndarray):
+        dok_similarity = similarity_matrix.todok()
+    else:
+        dok_similarity = similarity_matrix
+
+    rmse = np.nan  # = nan if cannot be predicted
+    # hide games, create new user_game_matrix
+    # & memorise to restore later
+    old_user_ratings = matrix_ratings[user].toarray()
+    old_user_mask_ratings = mask_ratings[user].toarray()
+    # modify dok ratings, dok_mask_ratings
+    hidden_games = hide_ratings(dok_ratings, dok_mask_ratings, user)
+    # modify dok_similarity for this row
+    old_similarity_row = similarity_matrix[user].copy()
+    recalc_cos_similarity(dok_ratings, dok_similarity, user)
+    # find similar users
+    similar_users = get_KNN(dok_similarity, k=35, user_ind=user, dtype="cos")
+    # predict ratings (if possible)
+    all_ratings, predicted_ratings = predict_ratings_baseline(dok_ratings, dok_mask_ratings, similar_users)
+
+    # calc rmse
+    to_eval = np.intersect1d(predicted_ratings, hidden_games)
+   
+    if to_eval.size != 0:
+        mae = mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+
+    # Update dok_ratings and dok_mask_ratings in one operation
+    dok_ratings[user] = old_user_ratings
+    dok_mask_ratings[user] = old_user_mask_ratings
+
+    # Update dok_similarity for the whole row and column in one operation
+    dok_similarity[user, :] = old_similarity_row
+    dok_similarity[:, user] = old_similarity_row
+
+    # check if everything was restored
+    assert ((similarity_matrix == dok_similarity).all())
+    assert ((matrix_ratings.toarray() == dok_ratings.toarray()).all())
+    assert ((mask_ratings.toarray() == dok_mask_ratings.toarray()).all())
+
+    return mae
