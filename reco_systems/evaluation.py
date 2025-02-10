@@ -98,10 +98,7 @@ def calc_RMSE_cos(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     dok_ratings = matrix_ratings.tolil()
     dok_mask_ratings = mask_ratings.tolil()
 
-    if not isinstance(similarity_matrix, np.ndarray):
-        dok_similarity = similarity_matrix.todok()
-    else:
-        dok_similarity = similarity_matrix
+    dok_similarity = similarity_matrix
 
     rmse = np.nan  # = nan if cannot be predicted
     # hide games, create new user_game_matrix
@@ -110,11 +107,12 @@ def calc_RMSE_cos(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     old_user_mask_ratings = mask_ratings[user].toarray()
     # modify dok ratings, dok_mask_ratings
     hidden_games = hide_ratings(dok_ratings, dok_mask_ratings, user)
+
     # modify dok_similarity for this row
     old_similarity_row = similarity_matrix[user].copy()
     recalc_cos_similarity(dok_ratings, dok_similarity, user)
     # find similar users
-    similar_users = get_KNN(dok_similarity, k=35, user_ind=user, dtype="cos")
+    similar_users = get_KNN(dok_similarity, k=int(np.sqrt(matrix_ratings.shape[0])), user_ind=user, dtype="cos")
     # predict ratings (if possible)
     all_ratings, predicted_ratings = predict_ratings_baseline(dok_ratings, dok_mask_ratings, similar_users)
 
@@ -176,7 +174,6 @@ def calc_RMSE_eucl(user: int, matrix_ratings: csr_array, mask_ratings: csr_array
     # modify dok ratings, dok_mask_ratings
 
     hidden_games = hide_ratings(inf_ratings, lil_mask_ratings, user, replace_with=np.nan)
-
     # modify dok_similarity for this row
     old_similarity_row = similarity_matrix[user].toarray()
     old_similarity_col = similarity_matrix[:, user].toarray()
@@ -184,7 +181,8 @@ def calc_RMSE_eucl(user: int, matrix_ratings: csr_array, mask_ratings: csr_array
 
     recalc_eucl_similarity(nan_ratings, inf_ratings, lil_mask_ratings, dok_similarity, dok_mask_sim, user)
     # find similar users
-    similar_users = get_KNN(dok_similarity, k=35, user_ind=user, dtype="euclidean", mask_sim_matrix=dok_mask_sim)
+    similar_users = get_KNN(dok_similarity, k=int(
+        np.sqrt(matrix_ratings.shape[0])), user_ind=user, dtype="euclidean", mask_sim_matrix=dok_mask_sim)
     # predict ratings (if possible)
     all_ratings, predicted_ratings = predict_ratings_baseline(inf_ratings, lil_mask_ratings, similar_users)
 
