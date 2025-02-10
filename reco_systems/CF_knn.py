@@ -256,6 +256,7 @@ def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games:
 # Version finale : tout faire dans la fonction + save graphique ? 
 def distance_evolution(matrix_ratings, mask_matrix, k:int, user_ind:int) -> np.array:
     """
+    Graphie évolution distance pour un user
     """
     # Get similarity matrix (get_sim_matrix ?)
     
@@ -270,8 +271,9 @@ def distance_evolution(matrix_ratings, mask_matrix, k:int, user_ind:int) -> np.a
     nb_nn = np.vectorize(lambda x : (distances[distances < x]).size )
     y_data = nb_nn(x_data)
 
-    plt.plot(x_data, y_data)
+    # 
+    plt.scatter(x_data, y_data)
     plt.xlabel ="k"
-    plt.ylabel = "distance"
+    plt.ylabel = "Nombre de users dont la distance à " + user_ind + " est inférieure à k"
     plt.show()
     return None
