@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from scipy.sparse import csr_array
 
@@ -250,3 +251,29 @@ def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games:
     """
 
     return df_games[df_games["Game id"].isin(table_assoc[selected_games])]
+
+
+# Version finale : tout faire dans la fonction + save graphique ? 
+def distance_evolution(matrix_ratings, mask_matrix, k:int, user_ind:int) -> np.array:
+    """
+    Graphie évolution distance pour un user
+    """
+    # Get similarity matrix (get_sim_matrix ?)
+    
+    similarity_matrix, _ = calc_similarity_matrix(matrix_ratings,mask_matrix, dist_type="euclidean")
+
+    # Faire knn, extraire dist
+    voisins = get_KNN(similarity_matrix,k,user_ind)
+    get_dists = np.vectorize(lambda x : similarity_matrix[user_ind][x])
+    distances = get_dists(voisins)
+
+    x_data = np.arange(int(max(distances)+1),step=1)
+    nb_nn = np.vectorize(lambda x : (distances[distances < x]).size )
+    y_data = nb_nn(x_data)
+
+    # 
+    plt.scatter(x_data, y_data)
+    plt.xlabel ="k"
+    plt.ylabel = "Nombre de users dont la distance à " + user_ind + " est inférieure à k"
+    plt.show()
+    return None
