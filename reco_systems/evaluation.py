@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.sparse import dok_array, csr_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from .CF_knn import get_KNN, predict_ratings_baseline
 # BASELINE
 
@@ -120,7 +120,7 @@ def calc_RMSE_cos(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     to_eval = np.intersect1d(predicted_ratings, hidden_games)
 
     if to_eval.size != 0:
-        rmse = mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+        rmse = root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
 
     # Update dok_ratings and dok_mask_ratings in one operation
     dok_ratings[user] = old_user_ratings
@@ -191,7 +191,7 @@ def calc_RMSE_eucl(user: int, matrix_ratings: csr_array, mask_ratings: csr_array
     to_eval = np.intersect1d(predicted_ratings, hidden_games)
 
     if to_eval.size != 0:
-        rmse = mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+        rmse = root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
         # print(matrix_ratings[user, to_eval].toarray(), inf_ratings[user, to_eval].toarray(), all_ratings[to_eval])
         # Update dok_ratings and dok_mask_ratings in one operation
     inf_ratings[user] = old_user_ratings
