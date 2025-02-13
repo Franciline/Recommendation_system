@@ -35,38 +35,36 @@ def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
     """
 
     similarity_matrix = None
-    mask_sim_matrix = None
     match dist_type:
         case "cos":
             similarity_matrix = cosine_distances(matrix_ratings.tocsr())
         case "euclidean":
-            similarity_matrix, mask_sim_matrix = _euclidian_missing_vals(matrix_ratings, mask_matrix)
+            similarity_matrix = _eucl_sparse(matrix_ratings, mask_matrix)
         # case "manhattan":
         #     similarity_matrix = manhattan_distances(matrix_ratings)
         case _:
             pass
-    return similarity_matrix, mask_sim_matrix
+    return similarity_matrix
 
 
-def _euclidian_missing_vals(matrix_ratings, mask_matrix):
-    """
-    ATTENTION : version is not optimized for sparse matrix.
-    Calculate similarity matrix based on euclidian distance. Missing values are exluded and
-    scaled (see docs sklearn.metrics.pairwise.nan_euclidean_distances).
-    """
+def _eucl_sparse(matrix_ratings, mask_ratings):
+    R, M = matrix_ratings, mask_ratings  # just for abbreviation
 
-    matrix_nans = matrix_ratings.toarray()
-    # missing_values are replaced with nan
-    matrix_nans[~mask_matrix.toarray().astype(bool)] = np.nan
+    # Eucl_distance(R, R) = R^2 + R^2 - 2dot(R * R.T)
+    # 1. Calc R^2 and apply mask
+    R_2 = R.multiply(R)
+    R_2_masked = R_2.dot(M.T)  # by applying mask only remaining values would be those on common rated games
 
-    similarity_matrix = nan_euclidean_distances(matrix_nans)
-    nans = np.isnan(similarity_matrix)
-    nonnans = np.where(~nans)
+    # No need to apply mask to dot product 'cause 0 values are not counted
+    # negative values are replaced with 0
+    eucl_squared = (R_2_masked + R_2_masked.T - 2 * R.dot(R.transpose())).maximum(0)
 
-    similarity_matrix = csr_array((similarity_matrix[nonnans], nonnans), similarity_matrix.shape)
+    # Calc ponderation. Every eucl_dist(u1, u2) is divided by common ratings shared by u1, u2
+    weights = M.dot(M.transpose())
+    inverse_weights = csr_array((1/weights.data, weights.indices, weights.indptr), shape=weights.shape)
 
-    return similarity_matrix, csr_array((np.ones(shape=(nonnans[0].shape[0],)), nonnans), similarity_matrix.shape)
-    # return similarity_matrix, csr_array((mask_sim_matrix[nonnans], nonnans), similarity_matrix.shape)
+    # .sqrt is not necessary
+    return eucl_squared.multiply(inverse_weights).sqrt()
 
 
 def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, mask_sim_matrix=None) -> np.array:
@@ -253,27 +251,27 @@ def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games:
     return df_games[df_games["Game id"].isin(table_assoc[selected_games])]
 
 
-# Version finale : tout faire dans la fonction + save graphique ? 
-def distance_evolution(matrix_ratings, mask_matrix, k:int, user_ind:int) -> np.array:
+# Version finale : tout faire dans la fonction + save graphique ?
+def distance_evolution(matrix_ratings, mask_matrix, k: int, user_ind: int) -> np.array:
     """
     Graphie évolution distance pour un user
     """
     # Get similarity matrix (get_sim_matrix ?)
-    
-    similarity_matrix, _ = calc_similarity_matrix(matrix_ratings,mask_matrix, dist_type="euclidean")
+
+    similarity_matrix, _ = calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type="euclidean")
 
     # Faire knn, extraire dist
-    voisins = get_KNN(similarity_matrix,k,user_ind)
-    get_dists = np.vectorize(lambda x : similarity_matrix[user_ind][x])
+    voisins = get_KNN(similarity_matrix, k, user_ind)
+    get_dists = np.vectorize(lambda x: similarity_matrix[user_ind][x])
     distances = get_dists(voisins)
 
-    x_data = np.arange(int(max(distances)+1),step=1)
-    nb_nn = np.vectorize(lambda x : (distances[distances < x]).size )
+    x_data = np.arange(int(max(distances)+1), step=1)
+    nb_nn = np.vectorize(lambda x: (distances[distances < x]).size)
     y_data = nb_nn(x_data)
 
-    # 
+    #
     plt.scatter(x_data, y_data)
-    plt.xlabel ="k"
+    plt.xlabel = "k"
     plt.ylabel = "Nombre de users dont la distance à " + user_ind + " est inférieure à k"
     plt.show()
     return None
