@@ -5,43 +5,55 @@ from scipy.sparse import csr_array, dok_array, coo_array
 
 def center_score(df: pd.DataFrame):
     """
-    avis_clean
-    The df with at least 3 columns 'User id' 'Game id' 'Rating', center the scores:
-    with xi the score of user i, xi = xi - mean(i)
+    Center the ratings, with xi the score of user i, xi = xi - avg(i) 
+    Necessary columns: 'User id' 'Rating'. Used to avoid biais in scores.
 
-    To avoid biais between scores
-    Returns the df with the scores centered
+    Parameters
+    ----------
+        df: dataframe, expected avis_clean 
+    
+    Returns 
+    -------
+        Two pd.DataFrames:
+         - Copy of the df with the ratings centered
+         - A df with the average rate of each users, cols = ["User id", "Average rate"]
     """
+
     df = df.copy(deep=True)
 
-    # df with average rate of each user
-    mean_score = df[["User id", "Rating"]].groupby("User id").mean().rename(
-        columns={"Rating": "Average rate"})
+    # centering the scores
+    mean_score = df[["User id", "Rating"]].groupby("User id").mean().rename(columns={"Rating": "Average rate"})
     mean_score = df.merge(mean_score, on="User id")
-    mean_score['Rating'] -= mean_score['Average rate']
-
-    df['Rating'] = mean_score['Rating']
-    return df, mean_score[["User id", "Average rate"]].drop_duplicates()
+    mean_score['Rating'] -=  mean_score['Average rate']
+    
+    return mean_score.drop(columns=['Average rate']), mean_score[["User id", "Average rate"]].drop_duplicates()
 
 
 def normalize(df: pd.DataFrame):
     """
-    avis_clean
-    The df with at least 2 columns, 'User id', 'Rating', normalize the scores:
-    score xi of user i: xi = (xi - min)/(max - min) with min and max the corresponding values
-    for the user i
-    Returns the df with the scores normalized
+    Normalize the ratings, with xi the score of user i, xi = (xi - min(i)) / (max(i) - min(i)) 
+    Necessary columns: 'User id' 'Rating'.
+
+    Parameters
+    ----------
+        df: dataframe, expected avis_clean 
+    
+    Returns 
+    -------
+        Two pd.DataFrames:
+         - Copy of the df with the ratings normalized
+         - A df with the min and max rate of each users, cols = ["User id", "Max", "Min"]
     """
 
     df = df.copy(deep=True)
     min_max = df.groupby("User id").agg({"Rating": ['min', 'max']}).reset_index()
     min_max.columns = ["User id", "Min", "Max"]  # no index levels
     min_max = df.merge(min_max, on="User id")
+    
+    min_max['Rating'] = (min_max['Rating'] - min_max["Min"])/(min_max["Max"] - min_max["Min"])
+    min_max['Rating'] = min_max['Rating'].fillna(0) # NaN to 0 from division by 0
 
-    df['Rating'] = (min_max['Rating'] - min_max["Min"])/(min_max["Max"] - min_max["Min"])
-    # df['Rating'] = df['Rating'].fillna(0) # NaN from division by 0
-
-    return df, min_max[["User id", "Max", "Min"]].drop_duplicates()
+    return min_max.drop(columns=["Min", "Max"]), min_max[["User id", "Max", "Min"]].drop_duplicates()
 
 
 def get_matrix_user_game(df_reviews: pd.DataFrame):
