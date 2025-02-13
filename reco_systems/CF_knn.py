@@ -17,9 +17,6 @@ Returns
 def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
     """Calculate similarity matrix (users). Similarity is based on a certain type of distance (e.g. euclidean, cosine).
 
-    EUCLIDEAN : 
-        If user X and user Y has rated nothing in common, then the value of the euclidean distance is nan
-        which is then replaced by 0 (to use csr_array), hence the mask matrix is needed (for prediction).
     Parameters
     ----------
         matrix_ratings: csr_array:
@@ -28,10 +25,11 @@ def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
             Type of distance which would be used as a metric for similarity between users.
     Returns
     -------
+
         if dist_type = "cos", then 
-            np.ndarray, None : Similarity matrix
+            np.ndarray : Similarity matrix [value = distance]
         if dist_type = "euclidean", then
-            csr_array, csr_array : Similarity matrix, mask for similarity matrix 
+            csr_array  : Similarity matrix [value = distance]
     """
 
     similarity_matrix = None
