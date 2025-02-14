@@ -202,11 +202,9 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     # modify dok_similarity for this row
 
     if isinstance(similarity_matrix, np.ndarray):
-        old_similarity_row = similarity_matrix[user].copy()
-        old_similarity_col = similarity_matrix[:, user].copy()
+        old_similarity_row = similarity_matrix[user].copy()  # column is not needed since S is symmetric
     else:
         old_similarity_row = similarity_matrix[user].toarray()
-        old_similarity_col = similarity_matrix[:, user].toarray()
 
     # Recacl similarity_matrix (S) ONLY for USER row, column
     match dist_type:
@@ -237,7 +235,7 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 
     # restore row, col
     S[user, :] = old_similarity_row
-    S[:, user] = old_similarity_col
+    S[:, user] = old_similarity_row  # column = row cause symmetry
 
     # check if everything was restored
 
