@@ -65,7 +65,7 @@ def _eucl_sparse(matrix_ratings, mask_ratings):
     return eucl_squared.multiply(inverse_weights).sqrt()
 
 
-def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, mask_sim_matrix=None) -> np.array:
+def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     """
     Find k nearest neighbors (similarity = distance wise) for a given user (user_ind).
 
@@ -88,14 +88,10 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int, dtype: str, ma
     else:
         sim_user_row = similarity_matrix[user_ind].copy()
 
-    if dtype == "euclidean":
-        # values corresponding to no intersection between rated games
-        to_replace = ~mask_sim_matrix[user_ind].toarray().astype(bool)
-        sim_user_row[to_replace] = np.inf
     # argpartition in O(n)
     sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
     ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.shape[0]-1))
-    # print(similarity_matrix[user_ind][ksmallest])
+
     return ksmallest[:k]
 
 
@@ -114,7 +110,7 @@ def weight_avg_distance(similarity_matrix: csr_array, similar_users: np.array, m
         user_ind: User for who games ratings should be predicted
     Returns
     -------
-        Predicted ratings for games. If no similar user rated the game X, then the predicted rating is X.
+        Predicted ratings for games. If no similar user rated the game X, then the predicted rating is 0.
     """
 
     distances = similarity_matrix[user_ind, similar_users]
