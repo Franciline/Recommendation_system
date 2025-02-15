@@ -98,9 +98,7 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     if sim_user_row.size <= 1: 
         return np.array([])
     
-    sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
-    # -2 to prevent choosint himself
-    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 2)) # in O(n)
+    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size-1)) # in O(n)
     return similarity_matrix[user_ind].col[indices][:min(k, sim_user_row.size)] # user's indices
 
 
