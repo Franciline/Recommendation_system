@@ -80,19 +80,28 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
 
     Returns
     -------
-        np.array: Array of row indices of k nearest users.
+        np.array: Array of row indices of k nearest users (which is empty is there is no similar user (EUCLIDEAN ONLY))
+            
     """
+
     # row corresponding to the user
-    if not isinstance(similarity_matrix, np.ndarray):
-        sim_user_row = similarity_matrix[user_ind].toarray()
-    else:
+    # COSINE (numpy.ndarray)
+    if isinstance(similarity_matrix, np.ndarray):
         sim_user_row = similarity_matrix[user_ind].copy()
-
-    # argpartition in O(n)
+        sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
+        ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 2))
+        return ksmallest[:min(k, sim_user_row.size - 1)]
+        
+    # EUCLIDEAN (csr_array)
+    sim_user_row = similarity_matrix[user_ind].data
+    # extreme case :  no one in common (user has no shared ratings)
+    if sim_user_row.size <= 1: 
+        return np.array([])
+    
     sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
-    ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.shape[0]-1))
-
-    return ksmallest[:k]
+    # -2 to prevent choosint himself
+    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 2)) # in O(n)
+    return similarity_matrix[user_ind].col[indices][:min(k, sim_user_row.size)] # user's indices
 
 
 def weight_avg_distance(similarity_matrix: csr_array, similar_users: np.array, matrix_ratings: csr_array, user_ind: int, means) -> np.array:
