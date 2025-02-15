@@ -327,28 +327,49 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 
 
 # RMSE & MAE means
-def calc_RMSE_mean_cos(k:np.ndarray, user_count : pd.DataFrame, min_reviews : int, max_reviews :int, matrix_ratings : csr_array, mask_ratings : csr_array, similarity_matrix : np.ndarray):
+def calc_RMSE_MAE_mean(k:np.ndarray, user_count : pd.DataFrame, min_reviews : int, max_reviews :int, matrix_ratings : csr_array, mask_ratings : csr_array, similarity_matrix : np.ndarray,dist_type:str):
     """
-        k : pr le get_knn
-        user_count : DF avec user-id -userindex-nb_reviews
-        min_reviews, max_reviews : tranche des revues
-        nb_users : prendre en compte dans la moyenne
-    """ # Note : ptet option nb_users + select type (random, most active)
+        Calculate the RMSE and MAE for every user matching the number of reviews requierments for using K-NN method for each given K.
 
-    # Récupération des users dans la tranche
-    users = user_count.loc([user_count["Count reviews"] >= min_reviews and user_count["Count reviews"] <= max_reviews],["User index"])
-
-    arr = np.empty()
-    for tmp_k in k :
-        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type="cos",k=tmp_k))
-        rmse_mae_k = vect_rsme_mae(users)
+        Parameters :
+        ----------
+            k (np.ndarray) : k for K-nn
+            user_count (pd.DataFrame) : DF with User id and Review_count
+            min_reviews, max_reviews (int) : 
+            matrix_ratings :
+            mask_ratings :
+            similarity_matrix :
+            dist_type :
         
-        entries_R = np.column_stack((users, np.full(users.size, "K"),np.full(users.size,"RMSE"),rmse_mae_k[:,0].reshape(-1,1)))
-        entries_M = np.column_stack((users, np.full(users.size, "K"),np.full(users.size,"MAE"),rmse_mae_k[:,1].reshape(-1,1)))
+        Returns :
+            (filtered_users.size, 4) shaped DF, columns = ['User id', k, 'Type' : RMSE, MAE, 'value']
+    """ 
 
-        np.append(arr,np.concatenate((entries_R,entries_M)))
+    # User filtering based on number of reviews
+    filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (user_count['Count reviews'] <= max_reviews)]
+    users = filtered[['User id']].to_numpy()
+
+    # Dataframe creation
+    data = [[None,None,None,None]]
+    for tmp_k in k :
+        print(tmp_k)
+        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type=dist_type,k=tmp_k))
+        rmse_mae_k = vect_rsme_mae(users)
+
+        tmp_R = np.column_stack((users, np.full(users.size, tmp_k)))
+        tmpR2 = np.column_stack((np.full(users.size,"RMSE"),rmse_mae_k[0]))
+        entries_R = np.column_stack((tmp_R,tmpR2))
+
+        tmp_M =np.column_stack((users, np.full(users.size, tmp_k)))
+        tmpM2 = np.column_stack((np.full(users.size,"MAE"),rmse_mae_k[1]))
+        entries_M = np.column_stack((tmp_M, tmpM2))
+
+        entries_RM = np.concatenate((entries_R, entries_M))
+        data = np.concatenate((data,entries_RM))
     
-    df = pd.DataFrame(arr,columns =["User index","K","Type","val"])
+    # List to Dataframe conversion
+    df = pd.DataFrame(data, columns=['User id','K','Type','Value'])
+    df.drop([0],inplace=True)
     return df
 
 
