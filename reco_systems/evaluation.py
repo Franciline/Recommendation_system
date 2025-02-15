@@ -5,6 +5,7 @@ from scipy.sparse import csr_array, lil_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from .CF_knn import get_KNN, predict_ratings_baseline
+from typing import Union
 
 
 def hide_ratings(matrix_ratings, mask_ratings, user_ind, percentage: float = 0.3) -> np.array:
@@ -154,7 +155,7 @@ def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similari
 
 
 def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
-               similarity_matrix: csr_array, metric: int, dist_type: int, k=None) -> float:
+               similarity_matrix: csr_array, metric: str, dist_type: str, k=None) -> Union[float,tuple[float,float]]:
     """
     Calculate RMSE/MAE for predicted ratings [these ratings were hidden] for 'user' (30% of all games that 'user' has rated)
     TODO: method 2 to evaluate -> hide randomly in a matrix.
@@ -175,7 +176,7 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
             Distance type of 'similarity matrix'
     Returns
     -------
-        float : MAE / RMSE. !!!np.nan is returned if we couldn't predict any hidden rating
+        float : MAE / RMSE or (RMSE,MAE). !!!np.nan is returned if we couldn't predict any hidden rating
     """
 
     if (not k):
@@ -228,6 +229,8 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
                 error = root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
             case "mae":
                 error = mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+            case "rmse_mae":
+                error = (root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]),mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]))
 
     # restore rows
     R[user] = old_user_ratings
@@ -321,3 +324,37 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 #     # assert ((mask_ratings.toarray() == dok_mask_ratings.toarray()).all())
 
 #     return mae
+
+
+# RMSE & MAE means
+def calc_RMSE_mean_cos(k:np.ndarray, user_count : pd.DataFrame, min_reviews : int, max_reviews :int, matrix_ratings : csr_array, mask_ratings : csr_array, similarity_matrix : np.ndarray):
+    """
+        k : pr le get_knn
+        user_count : DF avec user-id -userindex-nb_reviews
+        min_reviews, max_reviews : tranche des revues
+        nb_users : prendre en compte dans la moyenne
+    """ # Note : ptet option nb_users + select type (random, most active)
+
+    # Récupération des users dans la tranche
+    users = user_count.loc([user_count["Count reviews"] >= min_reviews and user_count["Count reviews"] <= max_reviews],["User index"])
+
+    arr = np.empty()
+    for tmp_k in k :
+        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type="cos",k=tmp_k))
+        rmse_mae_k = vect_rsme_mae(users)
+        
+        entries_R = np.column_stack((users, np.full(users.size, "K"),np.full(users.size,"RMSE"),rmse_mae_k[:,0].reshape(-1,1)))
+        entries_M = np.column_stack((users, np.full(users.size, "K"),np.full(users.size,"MAE"),rmse_mae_k[:,1].reshape(-1,1)))
+
+        np.append(arr,np.concatenate((entries_R,entries_M)))
+    
+    df = pd.DataFrame(arr,columns =["User index","K","Type","val"])
+    return df
+
+
+    
+
+
+    # Boxplot avec seaborn
+
+    return None
