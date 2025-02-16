@@ -1,13 +1,176 @@
 from scipy.sparse import csr_array
 import pandas as pd
 import numpy as np
-from scipy.sparse import csr_array, lil_array
+from scipy.sparse import csr_array, lil_array, dok_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
-from .CF_knn import get_KNN, predict_ratings_baseline
+from .CF_knn import get_KNN, predict_ratings_baseline, calc_similarity_matrix
 from typing import Union
 
 
+from typing import Union
+
+# Evaluation ver 2 : hide randomly x% of ratings everywhere in a matrix
+def _hide_ratings_full_matrix(matrix_ratings:dok_array, mask_ratings:dok_array, percentage:float=0.3) -> tuple[np.array, np.array]:
+    """Hide x% of existing ratings anywhere in a matrix. 
+    Modify INPLACE 'matrix_ratings', 'mask_ratings'
+
+    Returns
+    -------
+        np.array : users indices whose ratings were hidden
+        np.array : games indices whose ratings were hidden 
+        Those array have the same size and one-to-one correpondence.
+        For example, if users = [0, 0, 2], games = [0, 1, 2], then for user 0 ratings for games 0 and 1 were hidden, 
+        and for user 1 the rating for game 2 was hidden.
+    """
+
+    rows, cols = mask_ratings.nonzero() # existing ratings indices
+    indices = np.arange(rows.size)
+    indices_to_hide = np.random.choice(indices, int(percentage * indices.size), replace=False)
+    
+    # rows_to_hide : users, cols_to_hide : games
+    rows_to_hide, cols_to_hide = rows[indices_to_hide], cols[indices_to_hide] 
+    
+    mask_ratings[rows_to_hide, cols_to_hide] = 0
+    matrix_ratings[rows_to_hide, cols_to_hide] = 0
+
+    return rows_to_hide, cols_to_hide
+
+def _treat_user(user_ind:int, all_hidden_users:np.array, all_hidden_games:np.array,
+                similarity_matrix:Union[np.ndarray, csr_array], ratings_hidden:dok_array, 
+                mask_hidden:dok_array, matrix_ratings:csr_array,
+                k:int, metric:str) -> tuple[float, int]:
+    
+    """Auxiliary function for 'calc_error_full_matrix' to predict ratings for one user.
+
+    Parameters
+    ----------
+        user_ind: int
+            User index in matrices for who ratings should be predicted
+            
+        all_hidden_users: np.array
+            Indices (rows) of users for whom some ratings were hidden (see '_hide_ratings_full_matrix')
+        all_hidden_games: np.array
+            Indices (columns) of games for which some ratings were hidden (see '_hide_ratings_full_matrix')
+
+        similarity_matrix: np.ndarray (for 'cos') or sparse matrix (for 'euclidean')
+            User-user similarity matrix [recalculated for user-game matrix with hidden games]
+
+        ratings_hidden : dok_array
+            User-game matrix but with x% hidden ratings 
+        mask_hidden : dok_array
+            Mask for user-game matrix 'ratings_hidden'
+
+        matrix_ratings : csr_array
+            Original user-game matrix [needed to calculate error]
+        
+        k: int
+            k for KNN algorithm (to find similar users)
+        metric: str
+            "rmse" or "mae" or "rmse_mae"
+    
+    Returns: !!!
+        !Intermediate values! to calculate rmse, mae later.
+        Intermediate values : sum(true_rating - predicted_rating) (no division) and N : number of ratings that we were able to predict
+
+        -> If metric = "rmse" or "mae", then return sum, np.nan, N
+        -> If metric = "rmse_mae", then return sum_for_rmse, sum_for_mae, N
+        -> If nothing could be predicted for a given user, then return np.nan, np.nan, 0
+    """
+
+    user_hidden_ratings = all_hidden_games[all_hidden_users == user_ind]
+    similar_users = get_KNN(similarity_matrix, k=k, user_ind=user_ind)
+    
+    all_pred_ratings, able_to_predict = predict_ratings_baseline(ratings_hidden, mask_hidden, similar_users)
+    to_eval = np.intersect1d(able_to_predict, user_hidden_ratings)   
+
+    if to_eval.size == 0:
+        #print(user_ind, mask_hidden[np.ix_(similar_users, user_hidden_ratings)].nonzero())
+        return np.nan, np.nan, 0 # coudn't predict anything
+    
+    diff = matrix_ratings[user_ind, to_eval] - all_pred_ratings[to_eval]
+    count_predicted = to_eval.size
+    
+    match metric:
+        case "rmse":
+            sum_error = np.dot(diff, diff), np.nan
+        case "mae":
+            sum_error = np.sum(np.absolute(diff)), np.nan
+        case "rmse_mae":
+            sum_error = np.dot(diff, diff), np.sum(np.absolute(diff))
+
+    return *sum_error, count_predicted
+
+
+def calc_error_full_matrix(matrix_ratings:csr_array, mask_ratings:csr_array,
+                           metric:str, dist_type:str, k:int=None) -> tuple[float, float, int]:
+    """Evaluate quality of rating's prediction by hiding 20% of all existing ratings anywhere in User-game matrix.
+
+    Parameters
+    ----------
+        matrix_ratings: sparse matrix
+            User-game ratings matrix
+        mask_ratings: sparse matrix
+            Mask for user-game ratings (to know if rating truly exists)
+        metric: str
+            "rmse" or "mae" or "rmse_mae"
+        dist_type: str
+            "cos" or "euclidean"
+        k: int, default = sqrt(number of users)
+            k for KNN algorithm (to find similar users)
+
+    Returns
+    -------
+        N : number of nans, i.e. number of users for whom we could predict anything
+
+        -> If metric = "rmse" or "mae", then return RMSE or MAE, N
+        -> If metric = "rmse_mae", then return RMSE, MAE, N
+        -> If we weren't able to predict anything for every selected (for who at least 1 rating was hidden) user,
+            then if metric = "rmse" or "mae" -> np.nan, N
+                 if metric = "rmse_mae" -> np.nan, np.nan, N
+    """
+    
+    if not k:
+        k = int(np.sqrt(matrix_ratings.shape[0])) # k = sqrt(nb users)
+    
+    # conversion for efficient modification of sparsity structure
+    ratings_hidden = matrix_ratings.todok()
+    mask_hidden = mask_ratings.todok()
+
+    # hide 20% of games
+    users_hidden, games_hidden = _hide_ratings_full_matrix(ratings_hidden, mask_hidden, percentage=0.2)
+    # recalc similarity matrix
+    sim_matrix_hidden = calc_similarity_matrix(ratings_hidden.tocsr(), mask_hidden.tocsr(), dist_type)
+    print("Number of hidden ratings :", users_hidden.size)
+    # hide 20% of his games
+    treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=['f', 'f', 'i'])  
+
+    # sum1 = sum_rmse or sum_mae, sum2 = sum_mae or np.nan
+    sum1, sum2, count_predicted = treat_user_vect(np.unique(users_hidden), users_hidden, games_hidden, 
+                                                  sim_matrix_hidden, ratings_hidden, mask_hidden, matrix_ratings, 
+                                                  k, metric)
+
+    sum_count = np.sum(count_predicted)
+    nb_nans = sum1.size - np.count_nonzero(np.isnan(sum1))
+    match metric:
+        case "rmse" | "mae":
+            if sum_count == 0:
+                return np.nan, nb_nans
+            return np.sqrt(np.nansum(sum1) / sum_count), nb_nans
+        
+        case "rmse_mae":
+            if sum_count == 0:
+                return np.nan, np.nan, nb_nans
+            
+            sum_rmse, sum_mae = np.nansum(sum1), np.nansum(sum2)
+            return np.sqrt(sum_rmse / sum_count), np.sqrt(sum_mae / sum_count), nb_nans
+        
+        case _:
+            return np.nan
+
+
+
+# Evaluation VERSION 1. Hide x% of ratings for some selected users
 def hide_ratings(matrix_ratings, mask_ratings, user_ind, percentage: float = 0.3) -> np.array:
     """
     Modify INPLACE matrix_ratings, mask_ratings.
