@@ -350,34 +350,29 @@ def calc_RMSE_MAE_mean(k:np.ndarray, user_count : pd.DataFrame, min_reviews : in
     users = filtered[['User index']].to_numpy().flatten()
 
     # Dataframe creation
-    data = [[None,None,None,None]]
+    data = [[None,None,None]]
     for tmp_k in k :
         print(tmp_k)
 
-        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type="cos",k=tmp_k),otypes=[np.ndarray])
+        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type=dist_type,k=tmp_k),otypes=[np.ndarray])
         rmse_mae_k = np.vstack(vect_rsme_mae(users))
+        print(rmse_mae_k[0].size, rmse_mae_k[5].size)
 
-        tmp_R = np.column_stack((users, np.full(users.size, tmp_k)))
-        tmpR2 = np.column_stack((np.full(users.size,"RMSE"),rmse_mae_k[:,0]))
-        entries_R = np.column_stack((tmp_R,tmpR2))
+        tmpR = np.column_stack((np.full(users.size,"RMSE"),rmse_mae_k[:,0]))
+        entries_R = np.column_stack((np.full(users.size, tmp_k),tmpR))
 
-        tmp_M =np.column_stack((users, np.full(users.size, tmp_k)))
-        tmpM2 = np.column_stack((np.full(users.size,"MAE"),rmse_mae_k[:,1]))
-        entries_M = np.column_stack((tmp_M, tmpM2))
+        tmpM = np.column_stack((np.full(users.size,"MAE"),rmse_mae_k[:,1]))
+        entries_M = np.column_stack((np.full(users.size, tmp_k),tmpM))
 
         entries_RM = np.concatenate((entries_R, entries_M))
         data = np.concatenate((data,entries_RM))
     
     # List to Dataframe conversion
-    df = pd.DataFrame(data, columns=['User id','K','Type','Value'])
+    df = pd.DataFrame(data, columns=['K','Type','Value'])
     df.drop([0],inplace=True)
-    df['Value'].astype(np.float64)
+
+    df['K'] = df['K'].astype(np.int64)
+    df['Value'] = df['Value'].astype(np.float64)
+    df['Type'] = df['Type'].astype(str)
+
     return df
-
-
-    
-
-
-    # Boxplot avec seaborn
-
-    return None
