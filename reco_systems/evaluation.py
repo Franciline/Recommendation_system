@@ -155,7 +155,7 @@ def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similari
 
 
 def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
-               similarity_matrix: csr_array, metric: str, dist_type: str, k=None) -> Union[float,tuple[float,float]]:
+               similarity_matrix: csr_array, metric: str, dist_type: str, k=None) -> Union[float,np.array]:
     """
     Calculate RMSE/MAE for predicted ratings [these ratings were hidden] for 'user' (30% of all games that 'user' has rated)
     TODO: method 2 to evaluate -> hide randomly in a matrix.
@@ -230,7 +230,7 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
             case "mae":
                 error = mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
             case "rmse_mae":
-                error = (root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]),mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]))
+                error = np.array([root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]),mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])])
 
     # restore rows
     R[user] = old_user_ratings
@@ -347,21 +347,22 @@ def calc_RMSE_MAE_mean(k:np.ndarray, user_count : pd.DataFrame, min_reviews : in
 
     # User filtering based on number of reviews
     filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (user_count['Count reviews'] <= max_reviews)]
-    users = filtered[['User id']].to_numpy()
+    users = filtered[['User index']].to_numpy().flatten()
 
     # Dataframe creation
     data = [[None,None,None,None]]
     for tmp_k in k :
         print(tmp_k)
-        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type=dist_type,k=tmp_k))
-        rmse_mae_k = vect_rsme_mae(users)
+
+        vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type="cos",k=tmp_k),otypes=[np.ndarray])
+        rmse_mae_k = np.vstack(vect_rsme_mae(users))
 
         tmp_R = np.column_stack((users, np.full(users.size, tmp_k)))
-        tmpR2 = np.column_stack((np.full(users.size,"RMSE"),rmse_mae_k[0]))
+        tmpR2 = np.column_stack((np.full(users.size,"RMSE"),rmse_mae_k[:,0]))
         entries_R = np.column_stack((tmp_R,tmpR2))
 
         tmp_M =np.column_stack((users, np.full(users.size, tmp_k)))
-        tmpM2 = np.column_stack((np.full(users.size,"MAE"),rmse_mae_k[1]))
+        tmpM2 = np.column_stack((np.full(users.size,"MAE"),rmse_mae_k[:,1]))
         entries_M = np.column_stack((tmp_M, tmpM2))
 
         entries_RM = np.concatenate((entries_R, entries_M))
@@ -370,6 +371,7 @@ def calc_RMSE_MAE_mean(k:np.ndarray, user_count : pd.DataFrame, min_reviews : in
     # List to Dataframe conversion
     df = pd.DataFrame(data, columns=['User id','K','Type','Value'])
     df.drop([0],inplace=True)
+    df['Value'].astype(np.float64)
     return df
 
 
