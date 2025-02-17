@@ -87,7 +87,6 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
     to_eval = np.intersect1d(able_to_predict, user_hidden_ratings)
 
     if to_eval.size == 0:
-        # print(user_ind, mask_hidden[np.ix_(similar_users, user_hidden_ratings)].nonzero())
         return np.nan, np.nan, 0  # coudn't predict anything
 
     diff = matrix_ratings[user_ind, to_eval] - all_pred_ratings[to_eval]
@@ -100,7 +99,6 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
             sum_error = np.sum(np.absolute(diff)), np.nan
         case "rmse_mae":
             sum_error = np.dot(diff, diff), np.sum(np.absolute(diff))
-
     return *sum_error, count_predicted
 
 
@@ -123,7 +121,7 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
 
     Returns
     -------
-        N : number of nans, i.e. number of users for whom we could predict anything
+        N : number of ratings that couldn't be predicted
 
         -> If metric = "rmse" or "mae", then return RMSE or MAE, N
         -> If metric = "rmse_mae", then return RMSE, MAE, N
@@ -143,7 +141,7 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
     users_hidden, games_hidden = _hide_ratings_full_matrix(ratings_hidden, mask_hidden, percentage=0.2)
     # recalc similarity matrix
     sim_matrix_hidden = calc_similarity_matrix(ratings_hidden.tocsr(), mask_hidden.tocsr(), dist_type)
-    print("Number of hidden ratings :", users_hidden.size)
+    print(f"Number of hidden ratings : {users_hidden.size} ({matrix_ratings.data.size} existing ratings)")
     # hide 20% of his games
     treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=['f', 'f', 'i'])
 
@@ -153,19 +151,20 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
                                                   k, metric)
 
     sum_count = np.sum(count_predicted)
-    nb_nans = sum1.size - np.count_nonzero(np.isnan(sum1))
+    nb_non_predicted = users_hidden.size - sum_count
+
     match metric:
         case "rmse" | "mae":
             if sum_count == 0:
-                return np.nan, nb_nans
-            return np.sqrt(np.nansum(sum1) / sum_count), nb_nans
+                return np.nan, nb_non_predicted
+            return np.sqrt(np.nansum(sum1) / sum_count), nb_non_predicted
 
         case "rmse_mae":
             if sum_count == 0:
-                return np.nan, np.nan, nb_nans
+                return np.nan, np.nan, nb_non_predicted
 
             sum_rmse, sum_mae = np.nansum(sum1), np.nansum(sum2)
-            return np.sqrt(sum_rmse / sum_count), np.sqrt(sum_mae / sum_count), nb_nans
+            return np.sqrt(sum_rmse / sum_count), np.sqrt(sum_mae / sum_count), nb_non_predicted
 
         case _:
             return np.nan
@@ -371,8 +370,10 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
     """
 
     # User filtering based on number of reviews
-    filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (user_count['Count reviews'] <= max_reviews)]
+    filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (
+        user_count['Count reviews'] <= max_reviews)]
     users = filtered[['User index']].to_numpy().flatten()
+    print(users.size)
     # Dataframe creation
     # data = [[None, None, None]]
     data_rmse, data_mae = [], []
