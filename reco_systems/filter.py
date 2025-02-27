@@ -38,7 +38,7 @@ def filter_df(df_reviews: pd.DataFrame, min_reviews: int, max_iter: int = 10) ->
     # Reduce DataFrame 'reduced' which will contain only users who gave at least 'min reviews' AND
     # games who received at least 'min reviews' from these users
     reduced = reduced[reduced["Game id"].isin(
-        count_games[count_games["User id"] > min_reviews]["Game id"])]  # delete games
+        count_games[count_games["User id"] >= min_reviews]["Game id"])]  # delete games
 
     # Check convergence
     if (df_reviews.equals(reduced) or len(reduced) == 0):
