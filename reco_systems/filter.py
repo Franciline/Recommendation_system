@@ -29,7 +29,7 @@ def filter_df(df_reviews: pd.DataFrame, min_reviews: int, max_iter: int = 10) ->
 
     # Reduce DataFrame 'df_reviews' which will contain only users who gave at least 'min reviews'
     reduced = df_reviews[df_reviews["User id"].isin(
-        count_users[count_users["Game id"] > min_reviews]["User id"])]  # delete users
+        count_users[count_users["Game id"] >= min_reviews]["User id"])]  # delete users
 
     # Goal : eliminate games who gave less than < min_reviews (users are already deleted)
     # Dataframe produced : index, Game id, Number of users who rated the game [this columns is named as User id]
