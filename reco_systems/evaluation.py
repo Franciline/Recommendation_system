@@ -335,7 +335,8 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     # restore row, col
     S[user, :] = old_similarity_row
     S[:, user] = old_similarity_row  # column = row cause symmetry
-
+    if error[0] > 6:
+        print(user, to_eval.size)
     # check if everything was restored
 
     # if isinstance(similarity_matrix, np.ndarray):
@@ -370,12 +371,14 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
     """
 
     # User filtering based on number of reviews
+    np.random.seed(1)
     filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (
         user_count['Count reviews'] <= max_reviews)]
+    filtered = filtered.sample(min(100, filtered.shape[0]))
+
     users = filtered[['User index']].to_numpy().flatten()
     print(users.size)
     # Dataframe creation
-    # data = [[None, None, None]]
     data_rmse, data_mae = [], []
 
     for tmp_k in k:
@@ -383,24 +386,11 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
         # otypes = tuple[float, float]
         vect_rsme_mae = np.vectorize(calc_error, excluded=(1, 2, 3, 4, 5, 6), otypes=['f', 'f'])
 
-        # vect_rsme_mae = np.vectorize(lambda x : calc_error(x, matrix_ratings,mask_ratings,similarity_matrix,metric="rmse_mae",dist_type=dist_type,k=tmp_k),otypes=[np.ndarray])
-        # rmse_mae_k = np.vstack(vect_rsme_mae(users))
-
         rmse, mae = vect_rsme_mae(users, matrix_ratings, mask_ratings,
                                   similarity_matrix, metric="rmse_mae",
                                   dist_type=dist_type, k=tmp_k)
         data_rmse.append(rmse)
         data_mae.append(mae)
-
-        # rmse_mae_k = np.vstack(np.array([rmse, mae]))
-        # tmpR = np.column_stack((np.full(users.size, "RMSE"), rmse_mae_k[:, 0]))
-        # entries_R = np.column_stack((np.full(users.size, tmp_k), tmpR))
-
-        # tmpM = np.column_stack((np.full(users.size, "MAE"), rmse_mae_k[:, 1]))
-        # entries_M = np.column_stack((np.full(users.size, tmp_k), tmpM))
-
-        # entries_RM = np.concatenate((entries_R, entries_M))
-        # data = np.concatenate((data, entries_RM))
 
     # List to Dataframe conversion
 
@@ -410,9 +400,6 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
 
     # divide RMSE into Value and Type, the same for MAE
     df = df.melt(id_vars="K", value_vars=["RMSE", "MAE"], var_name="Type", value_name="Value")
-
-    # df = pd.DataFrame(data, columns=['K', 'Type', 'Value'])
-    # df.drop([0], inplace=True)
 
     df['K'] = df['K'].astype(np.int64)
     df['Value'] = df['Value'].astype(np.float64)
