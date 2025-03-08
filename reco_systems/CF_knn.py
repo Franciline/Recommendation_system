@@ -26,7 +26,7 @@ def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
     Returns
     -------
 
-        if dist_type = "cos", then 
+        if dist_type = "cos", then
             np.ndarray : Similarity matrix [value = distance]
         if dist_type = "euclidean", then
             csr_array  : Similarity matrix [value = distance]
@@ -81,7 +81,7 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     Returns
     -------
         np.array: Array of row indices of k nearest users (which is empty is there is no similar user (EUCLIDEAN ONLY))
-            
+
     """
 
     # row corresponding to the user
@@ -91,18 +91,19 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
         sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
         ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 2))
         return ksmallest[:min(k, sim_user_row.size - 1)]
-        
+
     # EUCLIDEAN (csr_array)
     sim_user_row = similarity_matrix[user_ind].data
     # extreme case :  no one in common (user has no shared ratings)
-    if sim_user_row.size <= 1: 
+    if sim_user_row.size <= 1:
         return np.array([])
-    
-    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size-1)) # in O(n)
-    return similarity_matrix[user_ind].col[indices][:min(k, sim_user_row.size)] # user's indices
+
+    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size-1))  # in O(n)
+    return similarity_matrix[user_ind].col[indices][:min(k, sim_user_row.size)]  # user's indices
 
 
-def weight_avg_distance(similarity_matrix: csr_array, similar_users: np.array, matrix_ratings: csr_array, user_ind: int, means) -> np.array:
+def weight_avg_distance(similarity_matrix, similar_users: np.array,
+                        matrix_ratings, mask_ratings, user_ind: int) -> np.array:
     """
     Calculate ponderated average (scaled back) of games ratings by users distances to each other.The weight W of a distance d = 1/d.
 
@@ -121,22 +122,24 @@ def weight_avg_distance(similarity_matrix: csr_array, similar_users: np.array, m
     """
 
     distances = similarity_matrix[user_ind, similar_users]
+    if not isinstance(similarity_matrix, np.ndarray):
+        distances = distances.toarray()  # conversion if necessary
 
     # Inversing distances
     non_zeros = distances.nonzero()
     distances[non_zeros] = np.reciprocal(distances[non_zeros])
 
     # Ratings which are non zero
-    mask = matrix_ratings[similar_users].transpose().toarray() != 0
 
-    prediction = np.dot(distances, matrix_ratings[similar_users].toarray())  # numerator
-    sums = np.array([np.sum(distances[mask_row]) for mask_row in mask])  # denominator
+    prediction = matrix_ratings[similar_users].T.dot(distances)  # numerator
+    sums = mask_ratings[similar_users].T.dot(distances)
 
     nonzeros = sums.nonzero()  # non zero values in denominator
 
-    # calc final weighted average
-    prediction[nonzeros] = prediction[nonzeros] / sums[nonzeros] + means[user_ind]
-    return prediction
+    # # calc final weighted average
+    prediction[nonzeros] = prediction[nonzeros] / sums[nonzeros]
+
+    return prediction, np.nonzero(sums)[0]
 
 
 def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, matrix_ratings: csr_array, user_ind: int, means) -> np.array:
@@ -189,7 +192,7 @@ def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, mat
 #     return np.sum(np.tile(coefs, (m, 1)) * weighted_means.T, axis=1)
 
 
-def predict_ratings_baseline(matrix_ratings, mask_matrix, similar_users: np.array) -> np.array:
+def predict_ratings_baseline(matrix_ratings, mask_ratings, similar_users: np.array, similarity_matrix, user_ind, distance_weight=False) -> np.array:
     """
     Baseline. Predict ratings for all existing games in 'matrix_ratings'. If the rating cannot be predicted (i.e. there is no similar user
     who has rated the game), then the rating is 0.
@@ -205,12 +208,14 @@ def predict_ratings_baseline(matrix_ratings, mask_matrix, similar_users: np.arra
     Returns
     -------
         np.array : Array of predicted ratings for each game
-        np.array : Games indices for which ratings could be predicted, i.e. if no similar user has rated the game, then 
+        np.array : Games indices for which ratings could be predicted, i.e. if no similar user has rated the game, then
             its index wouldn't be included
     """
+    if distance_weight:
+        return weight_avg_distance(similarity_matrix, similar_users, matrix_ratings, mask_ratings, user_ind)
 
     users_ratings = matrix_ratings[similar_users]             # ratings of similar users
-    valid_count = mask_matrix[similar_users].sum(axis=0)      # number of existing rating (for division to calc mean)
+    valid_count = mask_ratings[similar_users].sum(axis=0)     # number of existing rating (for division to calc mean)
     games_means = np.zeros(shape=(users_ratings.shape[1], ))  # put 0 for ratings where no ratings are known
     # calc means
     return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0), np.nonzero(valid_count)[0]
