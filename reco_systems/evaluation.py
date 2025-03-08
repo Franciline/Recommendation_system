@@ -42,7 +42,7 @@ def _hide_ratings_full_matrix(matrix_ratings: dok_array, mask_ratings: dok_array
 def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.array,
                 similarity_matrix: Union[np.ndarray, csr_array], ratings_hidden: dok_array,
                 mask_hidden: dok_array, matrix_ratings: csr_array,
-                k: int, metric: str) -> tuple[float, int]:
+                k: int, dist_type: str, metric: str) -> tuple[float, int]:
     """Auxiliary function for 'calc_error_full_matrix' to predict ratings for one user.
 
     Parameters
@@ -83,7 +83,11 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
     user_hidden_ratings = all_hidden_games[all_hidden_users == user_ind]
     similar_users = get_KNN(similarity_matrix, k=k, user_ind=user_ind)
 
-    all_pred_ratings, able_to_predict = predict_ratings_baseline(ratings_hidden, mask_hidden, similar_users)
+    # distance_weight = True if dist_type == "euclidean" else False
+    all_pred_ratings, able_to_predict = predict_ratings_baseline(ratings_hidden, mask_hidden,
+                                                                 similar_users, similarity_matrix, user_ind,
+                                                                 False)
+
     to_eval = np.intersect1d(able_to_predict, user_hidden_ratings)
 
     if to_eval.size == 0:
@@ -148,7 +152,7 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
     # sum1 = sum_rmse or sum_mae, sum2 = sum_mae or np.nan
     sum1, sum2, count_predicted = treat_user_vect(np.unique(users_hidden), users_hidden, games_hidden,
                                                   sim_matrix_hidden, ratings_hidden, mask_hidden, matrix_ratings,
-                                                  k, metric)
+                                                  k, dist_type, metric)
 
     sum_count = np.sum(count_predicted)
     nb_non_predicted = users_hidden.size - sum_count
@@ -313,7 +317,8 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     similar_users = get_KNN(S, k=k, user_ind=user)
 
     # predict ratings (if possible)
-    all_ratings, predicted_ratings = predict_ratings_baseline(R, M, similar_users)
+    # distance_weight = True if dist_type == "euclidean" else False
+    all_ratings, predicted_ratings = predict_ratings_baseline(R, M, similar_users, S, user, False)
 
     # calc rmse
     to_eval = np.intersect1d(predicted_ratings, hidden_games)
