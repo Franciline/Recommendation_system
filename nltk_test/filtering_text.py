@@ -1,7 +1,11 @@
 import nltk
 import string
+import pandas as pd
+import numpy as np
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
+import string
+from unidecode import unidecode
 
 from autocorrect import Speller
 
@@ -11,6 +15,81 @@ nltk.download("omw-1.4")
 nltk.download('punkt_tab')
 
 FR_stopwords = stopwords.words("french")
+
+def construction_corpus(avis : pd.DataFrame, taille:int) -> dict:
+    """ 
+    """
+
+    # Division en 2 dataframe : mal-notés, bien notés
+    comments = avis[["Comment title", "Comment body"]].apply(lambda x : " ".join(x.values.astype(str)), axis=1).str.lower().apply(unidecode)
+    avis['Comments'] = comments
+    good = avis[avis['Rating'] >= 5].drop(["Comment title", "Comment body"],axis=1 )
+    bad = avis[avis['Rating'] <= 5].drop(["Comment title", "Comment body"],axis=1 )
+
+    good_tokens = filtering_tokens(good['Comments'], taille, True)
+    bad_tokens = filtering_tokens(bad['Comments'], taille, False)
+
+    keep = pd.merge(good_tokens, bad_tokens on='Tokens')
+    keep['Freq_G'] = keep['Freq_G'].apply(lambda x : x if x else 0)
+    keep['Freq_D'] = keep['Freq_D'].apply(lambda x : x if x else 0)
+    keep['Freq'] = keep[['Freq_G', 'FreqD']].apply(lambda x : x[0] + x[1])
+
+
+
+    # Dataframe merge on tokens puis somme des fréquences
+    # TF-IDF !!! Trie par tfidf décroissant
+
+    # tant que dataframe > taille, enlever
+
+
+def filtering_tokens(avis : pd.DataFrame, taille, good:bool) -> pd.DataFrame:
+    # Avis : Rating, Comments
+    avis = avis['Comments']
+    # Ponctuation, stopwords
+
+    # Removing punctuation
+
+
+
+    # Corrections à apporter :
+    # word_tokenizations 
+    # Filtrage : on garde pas les digits, retrait des répétitions
+    # Filtrage longueur : entre 2 et 27
+    # Lemmatization : NOUN, ADJ, VERB
+    # Trier par fréquences (enlvelevr les < 5) tant que la taille du dataframe > taille, enlever
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def filtering_title(title : str, corpus = None) -> dict:
     """Filtre les titres yeeeeeeeee"""
