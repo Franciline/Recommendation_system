@@ -3,60 +3,77 @@ import string
 import pandas as pd
 import numpy as np
 from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer, WordNetLemmatizer
+#from nltk.stem import PorterStemmer, WordNetLemmatizer
 import string
+#from treetaggerwrapper import TreeTagger
 from unidecode import unidecode
 
-from autocorrect import Speller
+#from autocorrect import Speller
 
 nltk.download("stopwords")
-nltk.download("wordnet")
-nltk.download("omw-1.4")
-nltk.download('punkt_tab')
+#nltk.download("wordnet")
+#nltk.download("omw-1.4")
+#nltk.download('punkt_tab')
 
 FR_stopwords = stopwords.words("french")
 
-def construction_corpus(avis : pd.DataFrame, taille:int) -> dict:
+def construction_corpus(taille:int) -> dict:
     """ 
+    Construction d'un corpus à partir d'une BDD de commentaires
+    avis.colums = 'Comment title', 'Comment body'
+    """
+        
+    # Corpus creation from lemmatized dataframe
+    lemmas = pd.read_csv("generated_data/lemmas.csv", index_col=0)
+    lemmas = lemmas[~lemmas["Lemma"].isna()]
+    lemmas = lemmas[lemmas['Part of speech'].isin(['ADJ', 'NOM', "VER:infi","VER:pper", "VER:pres"])]
+    lemmas = lemmas['Lemma'].to_numpy()
+    
+    # Occurencies calculation for each lemma
+    lem, occ = np.unique(lemmas, return_counts= True)
+    freq_lem = pd.DataFrame({'lemma' : lem, 'freq' : occ})
+
+
+    
+    freq_lem = freq_lem.sort_values(by=['freq'],ascending=False)
+    return freq_lem.head(taille)['lemma'].to_numpy()
+    
+
+def words_freq(data,corpus) -> pd.DataFrame:
+    """
+    Construction d'un dataframe avec la fréquence des mots dans un corpus
     """
 
-    # Division en 2 dataframe : mal-notés, bien notés
-    comments = avis[["Comment title", "Comment body"]].apply(lambda x : " ".join(x.values.astype(str)), axis=1).str.lower().apply(unidecode)
-    avis['Comments'] = comments
-    good = avis[avis['Rating'] >= 5].drop(["Comment title", "Comment body"],axis=1 )
-    bad = avis[avis['Rating'] <= 5].drop(["Comment title", "Comment body"],axis=1 )
-
-    good_tokens = filtering_tokens(good['Comments'], taille, True)
-    bad_tokens = filtering_tokens(bad['Comments'], taille, False)
-
-    keep = pd.merge(good_tokens, bad_tokens on='Tokens')
-    keep['Freq_G'] = keep['Freq_G'].apply(lambda x : x if x else 0)
-    keep['Freq_D'] = keep['Freq_D'].apply(lambda x : x if x else 0)
-    keep['Freq'] = keep[['Freq_G', 'FreqD']].apply(lambda x : x[0] + x[1])
+    # Lemmas recovery
+    lemmas = pd.read_csv('generated_data/avis_lemmatized.csv')
+    lemmas = lemmas[lemmas.index.isin(data.index)]
 
 
+    lemmas['Comment'] = lemmas['Comment'].apply(lambda row : row.split())
+    tokens = lemmas.explode(column='Comment')
 
-    # Dataframe merge on tokens puis somme des fréquences
-    # TF-IDF !!! Trie par tfidf décroissant
+    # Calcul des occurences
+    lem, occurences = np.unique(tokens['Comment'].to_numpy(), return_counts=True)
 
-    # tant que dataframe > taille, enlever
+    df = pd.DataFrame({'Lemma' : lem, 'Freq' : occurences})
+    df['Freq'] = df['Freq'].apply(lambda val : val/df.size)
+    
+    # Garder uniquement les lemmas qui appraissent dans le corpus
+    return df[df['Lemma'].isin(corpus)]
 
+def diff_freq(freq_1, freq_2) -> pd.DataFrame:
+    """
+    Calcule la différence des fréquences
+    """
+    
 
-def filtering_tokens(avis : pd.DataFrame, taille, good:bool) -> pd.DataFrame:
-    # Avis : Rating, Comments
-    avis = avis['Comments']
-    # Ponctuation, stopwords
+    freq_1 = freq_1[freq_1['Lemma'].isin(freq_2['Lemma'])].copy().sort_values(by='Lemma', ascending=True)
+    freq_2 = freq_2[freq_2['Lemma'].isin(freq_1['Lemma'])].copy().sort_values(by='Lemma', ascending=True)
 
-    # Removing punctuation
+    diff = freq_1['Freq'].to_numpy() - freq_2['Freq'].to_numpy()
 
+    return pd.DataFrame({'Lemma' : freq_1['Lemma'], 'Freq differency' : diff}).sort_values(by='Freq differency',ascending=False)
 
-
-    # Corrections à apporter :
-    # word_tokenizations 
-    # Filtrage : on garde pas les digits, retrait des répétitions
-    # Filtrage longueur : entre 2 et 27
-    # Lemmatization : NOUN, ADJ, VERB
-    # Trier par fréquences (enlvelevr les < 5) tant que la taille du dataframe > taille, enlever
 
 
 
