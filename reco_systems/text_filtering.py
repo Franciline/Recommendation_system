@@ -10,7 +10,7 @@ from unidecode import unidecode
 
 #from autocorrect import Speller
 
-nltk.download("stopwords")
+#nltk.download("stopwords")
 #nltk.download("wordnet")
 #nltk.download("omw-1.4")
 #nltk.download('punkt_tab')
@@ -21,6 +21,8 @@ def construction_corpus(taille:int) -> dict:
     """ 
     Construction d'un corpus à partir d'une BDD de commentaires
     avis.colums = 'Comment title', 'Comment body'
+
+    Retourne df avec mots du corpus et leurs fréquences, les 'taille' plus fréquentes
     """
         
     # Corpus creation from lemmatized dataframe
@@ -32,7 +34,6 @@ def construction_corpus(taille:int) -> dict:
     # Occurencies calculation for each lemma
     lem, occ = np.unique(lemmas, return_counts= True)
     freq_lem = pd.DataFrame({'lemma' : lem, 'freq' : occ})
-
 
     
     freq_lem = freq_lem.sort_values(by=['freq'],ascending=False)
