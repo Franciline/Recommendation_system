@@ -38,9 +38,31 @@ def construction_corpus(taille:int) -> dict:
     
     freq_lem = freq_lem.sort_values(by=['freq'],ascending=False)
     return freq_lem.head(taille)['lemma'].to_numpy()
+
+
+def construction_corpus_df(df) -> dict:
+    """ 
+    Construction d'un corpus à partir d'une BDD de commentaires
+    avis.colums = 'Comment title', 'Comment body'
+
+    Retourne df avec mots du corpus et leurs fréquences, les 'taille' plus fréquentes
+    """
+        
+    # Corpus creation from lemmatized dataframe
+    # keep all verbs
+    df = df[df['Part of speech'].isin(['ADJ', 'NOM', 'VERB:infi'])]
+
+    
+    # Occurencies calculation for each lemma
+    lem, occ = np.unique(df['Lemma'].to_numpy(), return_counts= True)
+    freq_lem = pd.DataFrame({'lemma' : lem, 'freq' : occ})
+
+    
+    freq_lem = freq_lem.sort_values(by=['freq'],ascending=False)
+    return freq_lem
     
 
-def words_freq(data,corpus) -> pd.DataFrame:
+def words_freq2(data,corpus) -> pd.DataFrame:
     """
     Construction d'un dataframe avec la fréquence des mots dans un corpus
     """
@@ -62,11 +84,11 @@ def words_freq(data,corpus) -> pd.DataFrame:
     # Garder uniquement les lemmas qui appraissent dans le corpus
     return df[df['Lemma'].isin(corpus)]
 
+
 def diff_freq(freq_1, freq_2) -> pd.DataFrame:
     """
     Calcule la différence des fréquences
     """
-    
 
     freq_1 = freq_1[freq_1['Lemma'].isin(freq_2['Lemma'])].copy().sort_values(by='Lemma', ascending=True)
     freq_2 = freq_2[freq_2['Lemma'].isin(freq_1['Lemma'])].copy().sort_values(by='Lemma', ascending=True)
