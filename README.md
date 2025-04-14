@@ -13,3 +13,4 @@ Research project
 
 - filter.py : filter db with min reviews
 - user_game_matrix.py center_score, normalize, matrix user-game
+- other files
