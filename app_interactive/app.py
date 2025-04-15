@@ -1,5 +1,45 @@
 # Requires Dash 2.17.0 or later
 
+"""
+Clusters grouped together :
+
+-------
+Worst rated cluster
+10
+-------
+
+-------
+Construction. Batiments. Jeunes/famille
+0 - 25 - 12 - 19
+-------
+
+-------
+Rapide. Ressources, tactique
+20 - 27
+-------
+
+-------
+Collection (trésors, cartes)
+17 - 14 - 1 - 8 - 4
+-------
+
+-------
+Orienté sur le réflexion (logique, puzzle, détective, réponse aux questions)
+23 - 9 - 6 - 3 (y compris échecs) - 29 (~bluffing, role playing)
+-------
+
+-------
+Orienté sur le gestion des ressources, colonisation, guerre, différentes époques
+13 (difficle à comprendre, présence des animaux, centroide est proche à 5)
+5 - 13 - 18 - 28 (différentes époques) - 22 - 11 - 16 - 21 - 15 
+-------
+
+-------
+Jeux longs & complexes
+2 - 7 (great visuals aussi)
+-------
+"""
+
 from plotly.colors import qualitative
 from dash import Dash, html, dcc, callback, Output, Input
 import plotly.express as px  # interactivity
