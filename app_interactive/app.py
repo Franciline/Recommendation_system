@@ -71,8 +71,11 @@ n_clusters = 30  # -> 30 colors to generate
 offset = 200
 stretch = [1., 1., 1.]
 games_tsne = np.load("tsne_pushed.npy", mmap_mode="r")
-
 clusters = np.load("clusters.npy", mmap_mode="r")
+games_info = pd.read_csv("games_info.csv", index_col=0)
+
+current_cluster = None  # TO ADD
+
 
 # colors = np.array((qualitative.Plotly + qualitative.Set3 + qualitative.Alphabet)[:n_clusters])
 colors = {0: "#ca5310", 25: "#bb4d00", 12: "#8f250c", 19: "#691e06",
@@ -90,35 +93,44 @@ colors_points = [list(ImageColor.getcolor(colors[cluster], "RGB")) for cluster i
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 # app = Dash
 
-df = pd.DataFrame(data={
+df_all = pd.DataFrame(data={
+    "game_id": games_info["Game id"],
+
     "x": games_tsne[:, 0].tolist(),
     "y": games_tsne[:, 1].tolist(),
     "z": games_tsne[:, 2].tolist(),
 
     "color": colors_points,
     "cluster": clusters,
+    "name": clusters,
 })
 
 # View
-target = [df.x.mean(), df.y.mean(), df.z.mean()]
+target = [df_all.x.mean(), df_all.y.mean(), df_all.z.mean()]
 initial_view_state = pdk.ViewState(
     latitude=0, longitude=0, target=target, controller=True, rotation_x=15, rotation_orbit=30, zoom=0)
 
 # TSNE using PyDeck
 arc_layer = pdk.Layer(
     "PointCloudLayer",
-    data=df,
+    data=df_all,
     get_position=["x", "y", "z"],
     get_color="color",
-    pickable=True,
+    pickable=True,  # enable hover
     auto_highlight=True,
     point_size=2
 )
+
+# Text to display on hover
+tooltip = {
+    "html": "{cluster}"
+}
 
 deck = pdk.Deck(
     layers=[arc_layer],
     initial_view_state=initial_view_state,
     views=[pdk.View(type="OrbitView", controller=True)],
+    tooltip=tooltip
 )
 
 
@@ -145,7 +157,8 @@ app.layout = html.Div([
                  data=deck.to_json(),
                  tooltip={"text": "{name}"},
                  # style={"flex": "1", "height": "100%"},
-                 mapboxKey=mapbox_key
+                 mapboxKey=mapbox_key,
+                 enableEvents=["click", "hover"]
              )],
             style={"flex": "1", "minWidth": "0", "margin": "0 auto",
                    "overflow": "hidden", "position": 'relative', "width": "50vw"}
@@ -153,25 +166,25 @@ app.layout = html.Div([
 
         # Right sidebar
         html.Div([
-
             html.Div([
                 dcc.Dropdown([{"label": html.Span(t, style={}), "value": t} for t in themes],
                              'Tout', id='themes-dropdown', searchable=False, clearable=False, className="rounded-dropdown",
                              ),
-            ], style={"height": "20%", "padding": "20px"})
+            ], style={"height": "10%", "padding": "20px", "backgroundColor": "#f2e9e4}"}),
 
+            html.Div(children=[], id="game-info-div", style={"display": "none"})
 
-        ],
-            style={
-                "width": "50vh",
-                # "borderLeft": "1px solid #ddd",
-                "backgroundColor": "#7d808f",
-                # "background": "linear-gradient(270deg, #7d808f, 75%, #ffffff)",
-                "height": "100vh",
-                "overflowY": "auto"
+        ], style={
+            "width": "60vh",
+            # "borderLeft": "1px solid #ddd",
+            "backgroundColor": "#22223b",
+            # "background": "linear-gradient(270deg, #7d808f, 75%, #ffffff)",
+            "height": "100vh",
+            "overflowY": "auto"
         },
-            className="sidebar"
+
         ),
+
 
         html.Div(className="gradient-edge")
 
@@ -181,20 +194,23 @@ app.layout = html.Div([
 
 # Select thematic clusters based on dropdown
 @app.callback(
-    Output("tsne", "data"),
+    Output("tsne", "data", allow_duplicate=True),
     Input("themes-dropdown", "value"),
     prevent_initial_call=True,
 )
 def update_plot(value):
+    global current_cluster, df_all
     if value is None:
         return
+    specific_cluster_shown = False
+    current_cluster = None
 
     if value == "Tout":
-        points = df
+        points = df_all
         view_state = initial_view_state
 
     else:
-        points = df[df["cluster"].isin(themes[value])]
+        points = df_all[df_all["cluster"].isin(themes[value])]
         target = [points.x.mean(), points.y.mean(), points.z.mean()]
         view_state = pdk.ViewState(
             latitude=target[0], longitude=target[1], target=target, controller=True, rotation_x=0, rotation_orbit=0, zoom=1.5)
@@ -216,6 +232,85 @@ def update_plot(value):
     )
 
     return new_deck.to_json()
+
+
+# Click on a cluster -> zoom on this cluster, hide clusters points
+
+
+@app.callback(
+    Output('tsne', 'data', allow_duplicate=True),
+    Input('tsne', 'clickInfo'),
+    prevent_initial_call=True
+)
+def event_handler(clickInfo):
+
+    global current_cluster
+    # 1st condition : click on point in PointCloud. 2nd condition allows not to change cluster if only one cluster shown.
+
+    # TO DO: combine these conditions
+    if (clickInfo is None):
+        return
+
+    if ("object" not in clickInfo):
+        return
+
+    if clickInfo["object"] is None:
+        return
+
+    clicked_cluster = clickInfo["object"]["cluster"]
+    if current_cluster == clicked_cluster:
+        return
+
+    current_cluster = clicked_cluster
+    points = df_all[df_all["cluster"] == clicked_cluster]
+
+    target = [points.x.mean(), points.y.mean(), points.z.mean()]
+    view_state = pdk.ViewState(
+        latitude=target[0], longitude=target[1], target=target, controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
+
+    layer = pdk.Layer(
+        "PointCloudLayer",
+        data=points,
+        get_position=["x", "y", "z"],
+        get_color="color",
+        pickable=True,
+        auto_highlight=True,
+        point_size=4
+    )
+
+    new_deck = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view_state,
+        views=[pdk.View(type="OrbitView", controller=True)],
+    )
+
+    return new_deck.to_json()
+
+
+# Click on a point when one cluster is observed
+@app.callback(
+    Output("game-info-div", "children"),
+    Output("game-info-div", "style"),
+    Input('tsne', 'clickInfo'),
+    prevent_initial_call=True
+)
+def display_game_info(click_info):
+    global current_cluster
+    if click_info is None:
+        return [], {"display": "none"},
+
+    if click_info["object"] is None:
+        return [], {"display": "none"}
+
+    game_info = games_info[games_info["Game id"] == click_info["object"]["game_id"]].iloc[0].to_dict()
+    print(game_info["Description"])
+    return [html.H3(html.B(game_info["Game name year"]), style={"margin-bottom": "20px"}),
+            html.Div([html.P([html.B("Rating: "), f"{game_info['Rating']:.2f}"]),
+                      html.P([html.B(f"Type: "), game_info['Type']]),
+                      html.P([html.B(f"Joueurs: "), game_info['Players']]),
+                      html.P([html.B(f"Age: "), game_info['Age']])],
+                     style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gridGap": "5px", "width": "100%"}),
+            html.P(game_info["Description"], style={"textAlign": "justify"})], {"display": "block", "width": "100%", "color": "#e5e5e5", "padding": "25px"}
 
 
 if __name__ == '__main__':
