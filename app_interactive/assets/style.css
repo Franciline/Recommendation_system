@@ -1,0 +1,25 @@
+
+/* Dropdown styling */
+
+.rounded-dropdown .Select-control {
+    border-radius: 10px;
+}
+
+.rounded-dropdown .Select-menu-outer {
+    border-radius: 10px; 
+    overflow: hidden; 
+    margin-top:5px;
+}
+
+.rounded-dropdown .Select-option {
+border-radius: 8px; 
+padding: 8px;       
+}
+
+.rounded-dropdown .Select-option:hover {
+background-color: #f0f0f0;
+}
+
+.rounded-dropdown .Select-option.is-focused {
+background-color: #e0e0e0;
+}
