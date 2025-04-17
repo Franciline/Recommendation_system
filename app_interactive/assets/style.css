@@ -6,25 +6,50 @@
 
 /* Dropdown styling */
 
-.rounded-dropdown .Select-control {
+.rounded-dropdown .Select-control, 
+#users-dropdown .Select-control {
     border-radius: 10px;
+    height: 100%;
 }
 
-.rounded-dropdown .Select-menu-outer {
+.rounded-dropdown .Select-menu-outer, 
+#users-dropdown .Select-menu-outer {
     border-radius: 10px; 
     overflow: hidden; 
     margin-top:5px;
 }
 
-.rounded-dropdown .Select-option {
+.rounded-dropdown .Select-option,
+#users-dropdown .Select-option {
 border-radius: 8px; 
 padding: 8px;       
 }
 
-.rounded-dropdown .Select-option:hover {
+.rounded-dropdown .Select-option:hover, 
+#users-dropdown .Select-option:hover {
 background-color: #f0f0f0;
 }
 
-.rounded-dropdown .Select-option.is-focused {
+.rounded-dropdown .Select-option.is-focused, 
+#users-dropdown .Select-option.is-focused {
 background-color: #e0e0e0;
+}
+
+#mode-button {
+    width:40%;
+    font-size: 16px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    margin-right: 5px;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    background-color: #ffffff;
+    box-shadow: none;
+    border: 1px solid #cccccc;
+    height: 100%;
+    white-space: nowrap;
+}
+
+#mode-button:hover {
+    background-color: #ebf2fe;
 }

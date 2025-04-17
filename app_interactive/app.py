@@ -1,5 +1,5 @@
 # Requires Dash 2.17.0 or later
-
+# TO DO : change global variables to dcc.Store
 """
 Clusters grouped together :
 
@@ -58,26 +58,51 @@ import os
 
 import dash_bootstrap_components as dbc
 from plotly.colors import qualitative
-from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH
+from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
 import pandas as pd
 import numpy as np
 import pydeck as pdk
 import dash_deck
 from PIL import ImageColor
 
+
+def view_state_to_dict(view_state):
+    return {
+        "latitude": view_state.latitude,
+        "longitude": view_state.longitude,
+        "target": view_state.target,
+        "controller": view_state.controller,
+        "rotation_x": view_state.rotation_x,
+        "rotation_orbit": view_state.rotation_orbit,
+        "zoom": view_state.zoom,
+    }
+
+
+def dict_to_view_state(state_dict):
+    return pdk.ViewState(
+        latitude=state_dict["latitude"],
+        longitude=state_dict["longitude"],
+        target=state_dict["target"],
+        controller=state_dict["controller"],
+        rotation_x=state_dict["rotation_x"],
+        rotation_orbit=state_dict["rotation_orbit"],
+        zoom=state_dict["zoom"]
+    )
+
+
 mapbox_key = os.getenv("MAPBOX_ACCESS_TOKEN")
 
 n_clusters = 30  # -> 30 colors to generate
 offset = 200
 stretch = [1., 1., 1.]
-games_tsne = np.load("tsne_pushed.npy", mmap_mode="r")
-clusters = np.load("clusters.npy", mmap_mode="r")
-games_info = pd.read_csv("games_info.csv", index_col=0)
+games_tsne = np.load("tsne_pushed.npy", mmap_mode="r")   # TSNE 3D
+clusters = np.load("clusters.npy", mmap_mode="r")        # Clusters assignment
+nmf_pred = np.load("nnmf_prediction.npy", mmap_mode="r")  # NNMF prediction U @ G.T
 
+games_info = pd.read_csv("games_info.csv", index_col=0)  # info on games
+users_info = pd.read_csv("users_info.csv", index_col=0)  # info on users
 current_cluster = None  # TO ADD
 
-
-# colors = np.array((qualitative.Plotly + qualitative.Set3 + qualitative.Alphabet)[:n_clusters])
 colors = {0: "#ca5310", 25: "#bb4d00", 12: "#8f250c", 19: "#691e06",
           20: "#c05299", 27: "#822faf",
           17: "#ffea00", 14: "#ffdd00", 1: "#ffc300", 8: "#ffb700", 4: "#ffaa00",
@@ -89,9 +114,7 @@ colors = {0: "#ca5310", 25: "#bb4d00", 12: "#8f250c", 19: "#691e06",
 
 # Coloring : hex to rgb
 colors_points = [list(ImageColor.getcolor(colors[cluster], "RGB")) for cluster in clusters]
-
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-# app = Dash
 
 df_all = pd.DataFrame(data={
     "game_id": games_info["Game id"],
@@ -103,6 +126,7 @@ df_all = pd.DataFrame(data={
     "color": colors_points,
     "cluster": clusters,
     "name": clusters,
+    "game index": games_info["Game index"]
 })
 
 # View
@@ -118,22 +142,19 @@ arc_layer = pdk.Layer(
     get_color="color",
     pickable=True,  # enable hover
     auto_highlight=True,
-    point_size=2
+    point_size=2.5
 )
 
-# Text to display on hover
-tooltip = {
-    "html": "{cluster}"
-}
 
 deck = pdk.Deck(
     layers=[arc_layer],
     initial_view_state=initial_view_state,
     views=[pdk.View(type="OrbitView", controller=True)],
-    tooltip=tooltip
+    tooltip={"html": "{cluster}"}  # Text to display on hover
+
 )
 
-
+# For themes-dropdown
 themes = {
     "Tout": [],
     "🧩🕵️ Logic et Déduction": [23, 9, 6, 3, 29, 26],
@@ -146,9 +167,11 @@ themes = {
     "🏆 Coups de coeurs": [24],
 }
 
-
+# Main layout
 app.layout = html.Div([
-
+    dcc.Store(id="explore-mode", data=True),  # True if exploration mode, False if recommendation mode
+    dcc.Store(id="plotted-data", data=df_all["game index"].values),
+    # dcc.Store(id="view-state", data=view_state_to_dict(initial_view_state)),
     html.Div([
         # TSNE on the left
         html.Div([  # Left: DeckGL
@@ -167,42 +190,43 @@ app.layout = html.Div([
         # Right sidebar
         html.Div([
             html.Div([
-                dcc.Dropdown([{"label": html.Span(t, style={}), "value": t} for t in themes],
-                             'Tout', id='themes-dropdown', searchable=False, clearable=False, className="rounded-dropdown",
-                             ),
-            ], style={"height": "10%", "padding": "20px", "backgroundColor": "#f2e9e4}"}),
+                html.Button("Récommandation", id="mode-button"),  # button to change mode : reco ou exploration
+                dcc.Dropdown(options=[{"label": t, "value": t} for t in themes],
+                             value='Tout', id='themes-dropdown', searchable=False, clearable=False, className="rounded-dropdown",
+                             style={"width": "100%", "flex": "1"})
+            ], style={"height": "10%", "padding": "20px", "display": "flex", "width": "100%", 'alignItems': 'center', "height": "fitContent"}),
 
+            html.Div(children=[dcc.Dropdown(options=[{"label": "...", "value": "..."}] +
+                                            [{"label": f"User {username}", "value": index}
+                                             for username, index in users_info[["Username", "User index"]].itertuples(index=False)],
+                                            value="...", searchable=True, clearable=False, id="users-dropdown",
+                                            style={"width": "100%", "flex": "1"})],
+                     id="user-select-div",
+                     style={"height": "10%", "padding": "0px 20px 20px 20px"}),
             html.Div(children=[], id="game-info-div", style={"display": "none"})
 
         ], style={
             "width": "60vh",
-            # "borderLeft": "1px solid #ddd",
             "backgroundColor": "#22223b",
-            # "background": "linear-gradient(270deg, #7d808f, 75%, #ffffff)",
             "height": "100vh",
             "overflowY": "auto"
         },
-
         ),
-
-
-        html.Div(className="gradient-edge")
-
-    ], style={"display": "flex", "flexDirection": "row"})
+    ], style={"display": "flex", "flexDirection": "row", "overflowX": "auto", "minWidth": "800px"})
 ])
 
 
 # Select thematic clusters based on dropdown
 @app.callback(
     Output("tsne", "data", allow_duplicate=True),
+    Output("plotted-data", "data", allow_duplicate=True),
     Input("themes-dropdown", "value"),
     prevent_initial_call=True,
 )
 def update_plot(value):
     global current_cluster, df_all
     if value is None:
-        return
-    specific_cluster_shown = False
+        return no_update, no_update
     current_cluster = None
 
     if value == "Tout":
@@ -230,36 +254,37 @@ def update_plot(value):
         initial_view_state=view_state,
         views=[pdk.View(type="OrbitView", controller=True)],
     )
-
-    return new_deck.to_json()
+    return new_deck.to_json(), points["game index"].values
 
 
 # Click on a cluster -> zoom on this cluster, hide clusters points
 
 
 @app.callback(
+    Output('themes-dropdown', 'value'),
     Output('tsne', 'data', allow_duplicate=True),
+    Output("plotted-data", "data", allow_duplicate=True),
     Input('tsne', 'clickInfo'),
     prevent_initial_call=True
 )
-def event_handler(clickInfo):
+def zoom_cluster(clickInfo):
 
     global current_cluster
     # 1st condition : click on point in PointCloud. 2nd condition allows not to change cluster if only one cluster shown.
 
     # TO DO: combine these conditions
     if (clickInfo is None):
-        return
+        return no_update, no_update, no_update
 
     if ("object" not in clickInfo):
-        return
+        return no_update, no_update, no_update
 
     if clickInfo["object"] is None:
-        return
+        return no_update, no_update, no_update
 
     clicked_cluster = clickInfo["object"]["cluster"]
     if current_cluster == clicked_cluster:
-        return
+        return no_update, no_update, no_update
 
     current_cluster = clicked_cluster
     points = df_all[df_all["cluster"] == clicked_cluster]
@@ -284,7 +309,7 @@ def event_handler(clickInfo):
         views=[pdk.View(type="OrbitView", controller=True)],
     )
 
-    return new_deck.to_json()
+    return None, new_deck.to_json(), points["game index"].values
 
 
 # Click on a point when one cluster is observed
@@ -303,7 +328,6 @@ def display_game_info(click_info):
         return [], {"display": "none"}
 
     game_info = games_info[games_info["Game id"] == click_info["object"]["game_id"]].iloc[0].to_dict()
-    print(game_info["Description"])
     return [html.H3(html.B(game_info["Game name year"]), style={"margin-bottom": "20px"}),
             html.Div([html.P([html.B("Rating: "), f"{game_info['Rating']:.2f}"]),
                       html.P([html.B(f"Type: "), game_info['Type']]),
@@ -311,6 +335,70 @@ def display_game_info(click_info):
                       html.P([html.B(f"Age: "), game_info['Age']])],
                      style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gridGap": "5px", "width": "100%"}),
             html.P(game_info["Description"], style={"textAlign": "justify"})], {"display": "block", "width": "100%", "color": "#e5e5e5", "padding": "25px"}
+
+
+@app.callback(
+    Output('users-dropdown', 'disabled'),
+    Output('mode-button', 'children'),
+    Output('explore-mode', 'data'),
+
+    Input('mode-button', 'n_clicks'),  # n_clicks is not used, but Dash demands non empty property
+    State('explore-mode', 'data'),
+    prevent_initial_call=True
+)
+def change_mode(click_info, data):
+    global themes
+    if click_info is None or data is None:
+        return no_update, no_update, no_update
+
+    # Exploration mode -> go to Reco mode
+    if data == True:
+        return False, "Exploration", False
+
+    # Reco mode -> go to Exploration mode. Dropdown : cluster themes
+    return True, "Récommandation", True
+
+
+@app.callback(
+    Output("tsne", "data", allow_duplicate=True),
+    Input("users-dropdown", "value"),
+    State("plotted-data", "data"),
+    prevent_initial_call=True
+)
+def get_user_tsne(user_index, plotted_games_index):
+    ratings = nmf_pred[user_index, plotted_games_index]
+
+    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    red, green, blue = (255 * (1 - ratings)).astype(int), (255 *
+                                                           ratings).astype(int), np.zeros(ratings.shape, dtype=int)
+
+    points = df_all[df_all["game index"].isin(plotted_games_index)].copy()
+
+    # RGB. Rating 0 = red, Rating 10 = green
+    red = (255 * (1 - ratings)).astype(int)
+    green = (255 * ratings).astype(int)
+    blue = np.zeros_like(red)
+
+    # Reassign colors
+    colors = np.stack([red, green, blue], axis=1).tolist()
+    points["color"] = colors
+
+    layer = pdk.Layer(
+        "PointCloudLayer",
+        data=points,
+        get_position=["x", "y", "z"],
+        get_color="color",
+        pickable=True,
+        auto_highlight=True,
+        point_size=2
+    )
+
+    new_deck = pdk.Deck(
+        layers=[layer],
+        initial_view_state=initial_view_state,
+        views=[pdk.View(type="OrbitView", controller=True)],
+    )
+    return new_deck.to_json()
 
 
 if __name__ == '__main__':
