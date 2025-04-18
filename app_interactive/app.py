@@ -241,7 +241,8 @@ app.layout = html.Div([
             "width": "60vh",
             "backgroundColor": "#22223b",
             "height": "100vh",
-            "overflowY": "auto"
+            "overflowY": "auto",
+            "maxWidth": "60vh",
         },
         ),
     ], style={"display": "flex", "flexDirection": "row", "overflowX": "auto", "minWidth": "800px"})
@@ -299,7 +300,7 @@ def zoom_cluster(clickInfo, current_cluster):
 
     clicked_cluster = clickInfo["object"]["cluster"]
     if current_cluster == clicked_cluster:
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update
 
     points = df_all[df_all["cluster"] == clicked_cluster]
 
@@ -334,7 +335,18 @@ def display_game_info(click_info):
                       html.P([html.B(f"Joueurs: "), game_info['Players']]),
                       html.P([html.B(f"Age: "), game_info['Age']])],
                      style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gridGap": "5px", "width": "100%"}),
-            html.P(game_info["Description"], style={"textAlign": "justify"})], {"display": "block", "width": "100%", "color": "#e5e5e5", "padding": "25px"}
+            html.P(game_info["Description"], style={"textAlign": "justify"})], {
+                "display": "block",
+                "width": "auto",
+                "color": "#14213d",
+                "padding": "25px",
+                "backgroundColor": "#ffffff",
+                "padding": "20px",
+                "margin-left": "20px",
+                "margin-right": "20px",
+                "borderRadius": "15px",
+
+    }
 
 
 @app.callback(
