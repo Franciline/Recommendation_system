@@ -146,8 +146,6 @@ def get_view_params(points):
 #     )
 
 
-mapbox_key = os.getenv("MAPBOX_ACCESS_TOKEN")
-
 n_clusters = 30  # -> 30 colors to generate
 games_tsne = np.load("tsne_pushed.npy", mmap_mode="r")   # TSNE 3D
 clusters = np.load("clusters.npy", mmap_mode="r")        # Clusters assignment
@@ -215,7 +213,6 @@ app.layout = html.Div([
                  data=deck.to_json(),
                  tooltip={"text": "{name}"},
                  # style={"flex": "1", "height": "100%"},
-                 mapboxKey=mapbox_key,
                  enableEvents=["click", "hover"]
              )],
             style={"flex": "1", "minWidth": "0", "margin": "0 auto",
@@ -234,7 +231,7 @@ app.layout = html.Div([
             html.Div(children=[dcc.Dropdown(options=[{"label": "...", "value": "..."}] +
                                             [{"label": f"User {username}", "value": index}
                                              for username, index in users_info[["Username", "User index"]].itertuples(index=False)],
-                                            value="...", searchable=True, clearable=False, id="users-dropdown",
+                                            value="...", searchable=True, clearable=False, id="users-dropdown", disabled=True,
                                             style={"width": "100%", "flex": "1"})],
                      id="user-select-div",
                      style={"height": "10%", "padding": "0px 20px 20px 20px"}),
