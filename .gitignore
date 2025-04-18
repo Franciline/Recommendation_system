@@ -4,3 +4,5 @@ database_cleaned/
 __pycache__/
 *.csv
 **.csv
+!app_interactive/games_info.csv
+!app_interactive/users_info.csv
