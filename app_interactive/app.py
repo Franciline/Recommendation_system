@@ -60,15 +60,15 @@ Best rated
 -------
 """
 
-from PIL import ImageColor
-import dash_deck
-import pydeck as pdk
-import numpy as np
-import pandas as pd
-from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
-from plotly.colors import qualitative
 import os
 import dash_bootstrap_components as dbc
+from plotly.colors import qualitative
+from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
+import pandas as pd
+import numpy as np
+import pydeck as pdk
+import dash_deck
+from PIL import ImageColor
 
 
 def get_deck(points, view, point_size=2.5):
@@ -409,20 +409,19 @@ def change_mode(click_info, mode_data, plotted_games_index):
     global themes, df_all, colors_points, initial_view_state
     if click_info is None:
         return no_update, no_update, no_update, no_update, no_update, no_update, no_update
-    print(len(plotted_games_index))
+
     points = df_all[df_all["game index"].isin(plotted_games_index)]
 
     # Exploration mode -> go to Reco mode
     if mode_data == True:
+        print("Change to empty")
         points["name"] = ""  # nothing on hover
         return False, "...", "🔁 Exploration", False, no_update, no_update, no_update
 
-    # Reco mode -> go to Exploration mode. Dropdown : cluster themes
-    df_all["color"] = colors_points  # back to palette color
-    view = recalc_view(points, games_info, initial_view_state)
-    new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
+    # Reco mode -> go to Exploration mode. Dropdown : cluster themes.
+    # Points will be replotted by 'get_user_tsne'. Same for changed in 'df_all'
 
-    return True, "...", "🔁 Recommandation", True, new_deck.to_json(), 'dropdown-reco-games', 'button-reco-games'
+    return True, "...", "🔁 Recommandation", True, no_update, 'dropdown-reco-games', 'button-reco-games'
 
 
 @app.callback(
@@ -435,9 +434,10 @@ def change_mode(click_info, mode_data, plotted_games_index):
 
     Input("users-dropdown", "value"),
     State("plotted-data", "data"),
+    State('explore-mode', 'data'),
     prevent_initial_call=True
 )
-def get_user_tsne(user_index, plotted_games_index):
+def get_user_tsne(user_index, plotted_games_index, explore_mode):
     """Replot plotted games to change their color based on predicted ratings with NNMF
 
     Note :
@@ -452,14 +452,25 @@ def get_user_tsne(user_index, plotted_games_index):
     points = df_all[df_all["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
 
+    print("User dropdown value changed to ", user_index)
     if user_index == "...":  # No user selected
-        points["name"] = ""
+        if explore_mode:
+            df_all["name"] = df_all["cluster"]
+        else:
+            df_all["name"] = ""
+
         df_all["color"] = colors_points
+
+        points = df_all[df_all["game index"].isin(plotted_games_index)]
+        view = recalc_view(points, games_info, initial_view_state)
 
         new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
         return new_deck.to_json(), {"text": "{name}"}, no_update, True, 'dropdown-reco-games', 'button-reco-games'
 
     # No user change -> the event is not fired
+
+    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    view = recalc_view(points, games_info, initial_view_state)
 
     ratings = nmf_pred[user_index, :]
 
@@ -482,9 +493,12 @@ def get_user_tsne(user_index, plotted_games_index):
     mask = df_all["game index"].isin(user_info["Top games"].item())
     df_all.loc[mask, "color"] = df_all.loc[mask, "color"].apply(lambda _: [255, 0, 161])
 
+    df_all["name"] = np.round(np.clip(nmf_pred[user_index, :] * 8 + 2, 0, 10), 1)  # Predicted rating on hover
+
     points = df_all[df_all["game index"].isin(plotted_games_index)]
-    points["name"] = np.round(np.clip(nmf_pred[user_index, plotted_games_index]
-                              * 8 + 2, 0, 10), 1)  # Predicted rating on hover
+
+    # points["name"] = np.round(np.clip(nmf_pred[user_index, plotted_games_index]
+    #                           * 8 + 2, 0, 10), 1)
 
     view = recalc_view(points, games_info, initial_view_state)
     new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
