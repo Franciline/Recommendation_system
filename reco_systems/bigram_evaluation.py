@@ -197,49 +197,46 @@ def knn_comments_tfidf_plot(user_id, games_to_consider, matrix_ratings, mask_rat
 
 # using tf idf filtering, count number of intersection in neg and pos
 def count_intersect(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens): # user id 
+    def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
+        document = np.array([])
 
-        # _, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+        for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+            g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
+            values = vectors[index].data  # Non-zero values in the sparse matrix
+            mask = values >= threshold
+            values = values[mask]
+            indices = vectors[index].indices[mask]
+            keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
+            kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
+            if kept.size != 0:
+                document = np.concatenate((document,kept), axis = 0)
+        return document        
+    
+    def filtered_big_df(df): # construct frequency lemma df
+        bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
+        if bigrams_comments.size != 0:
+            bigrams_comments = np.hstack(bigrams_comments)
+        val, count = np.unique(bigrams_comments, return_counts=True)
+        count = count/len(bigrams_comments)
+        return pd.DataFrame({"Lemma": val, 'Freq': count})
 
-        def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
-            document = np.array([])
+    # Negatives comments
+    bigrams_neg = filtered_big_df(sim_users_neg)        
+    bigrams_neg_user = filtered_big_df(user_neg)
 
-            for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
-                g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
-                values = vectors[index].data  # Non-zero values in the sparse matrix
-                mask = values >= threshold
-                values = values[mask]
-                indices = vectors[index].indices[mask]
-                keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
-                kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
-                if kept.size != 0:
-                    document = np.concatenate((document,kept), axis = 0)
-            return document        
-        
-        def filtered_big_df(df): # construct frequency lemma df
-            bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
-            if bigrams_comments.size != 0:
-                bigrams_comments = np.hstack(bigrams_comments)
-            val, count = np.unique(bigrams_comments, return_counts=True)
-            count = count/len(bigrams_comments)
-            return pd.DataFrame({"Lemma": val, 'Freq': count})
+    # Find intersection
+    bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
+    bigrams_neg_user = bigrams_neg_user[bigrams_neg_user["Lemma"].isin(bigrams_neg["Lemma"])]
 
-        # Negatives comments
-        bigrams_neg = filtered_big_df(sim_users_neg)        
-        bigrams_neg_user = filtered_big_df(user_neg)
+    # # Positive comments
+    bigrams_pos = filtered_big_df(sim_users_pos)
+    bigrams_pos_user = filtered_big_df(user_pos)
+    
+    # Find intersection
+    bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
+    bigrams_pos_user = bigrams_pos_user[bigrams_pos_user["Lemma"].isin(bigrams_pos["Lemma"])]
 
-        # Find intersection
-        bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
-        bigrams_neg_user = bigrams_neg_user[bigrams_neg_user["Lemma"].isin(bigrams_neg["Lemma"])]
-
-        # # Positive comments
-        bigrams_pos = filtered_big_df(sim_users_pos)
-        bigrams_pos_user = filtered_big_df(user_pos)
-        
-        # Find intersection
-        bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
-        bigrams_pos_user = bigrams_pos_user[bigrams_pos_user["Lemma"].isin(bigrams_pos["Lemma"])]
-
-        return  len(bigrams_pos), len(bigrams_neg)
+    return  len(bigrams_pos), len(bigrams_neg)
 
 # type: random, simi, less_simi
 def knn_comments_count(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):    
@@ -247,6 +244,63 @@ def knn_comments_count(user_id, games_to_consider, matrix_ratings, mask_ratings,
                                                                                 mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
     pos_count, neg_count = count_intersect(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens)
     return pos_count, neg_count
+
+""" Count the number of bigrams in the intersection, divided by the number of neighbors' comments """
+
+# using tf idf filtering, count number of intersection in neg and pos
+def count_intersect_norm(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens): # user id 
+    def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
+        document = np.array([])
+
+        for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+            g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
+            values = vectors[index].data  # Non-zero values in the sparse matrix
+            mask = values >= threshold
+            values = values[mask]
+            indices = vectors[index].indices[mask]
+            keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
+            kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
+            if kept.size != 0:
+                document = np.concatenate((document,kept), axis = 0)
+        return document        
+    
+    def filtered_big_df(df): # construct frequency lemma df
+        bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
+        if bigrams_comments.size != 0:
+            bigrams_comments = np.hstack(bigrams_comments)
+        val, count = np.unique(bigrams_comments, return_counts=True)
+        count = count/len(bigrams_comments)
+        return pd.DataFrame({"Lemma": val, 'Freq': count})
+
+    # Negatives comments
+    bigrams_neg = filtered_big_df(sim_users_neg)        
+    bigrams_neg_user = filtered_big_df(user_neg)
+
+    # Find intersection
+    bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
+    bigrams_neg_user = bigrams_neg_user[bigrams_neg_user["Lemma"].isin(bigrams_neg["Lemma"])]
+
+    # # Positive comments
+    bigrams_pos = filtered_big_df(sim_users_pos)
+    bigrams_pos_user = filtered_big_df(user_pos)
+    
+    # Find intersection
+    bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
+    bigrams_pos_user = bigrams_pos_user[bigrams_pos_user["Lemma"].isin(bigrams_pos["Lemma"])]
+
+    # normalisation
+    norm_intersect_pos = len(bigrams_pos)/len(sim_users_pos) if len(sim_users_pos) else 0 # avoid div by 0
+    norm_intersect_neg = len(bigrams_neg)/len(sim_users_neg) if len(sim_users_neg) else 0
+
+    return  norm_intersect_pos, norm_intersect_neg 
+
+# type: random, simi, less_simi
+def knn_comments_count_norm(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):    
+    sim_users_neg, sim_users_pos, user_neg, user_pos = knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
+                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
+    pos_count, neg_count = count_intersect_norm(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens)
+    return pos_count, neg_count
+
 
 """ Proportion of user's bigrams in the intersection """
 
@@ -406,3 +460,116 @@ def knn_comments_norm(user_id, games_to_consider, matrix_ratings, mask_ratings, 
     
     # print(f'Number intersection bigrams\nPos {pos_count}\nNeg {neg_count}')
     return score_pos, score_neg, pos_count, neg_count
+
+
+""" Intersection with predicted user's comment and actual user's comment with no norm by number of comments """
+
+# using tf idf filtering, count number of intersection in neg and pos
+def count_intersect_topx_nn(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x): # user id 
+
+    def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
+        document = np.array([])
+
+        for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+            g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
+            values = vectors[index].data  # Non-zero values in the sparse matrix
+            mask = values >= threshold
+            values = values[mask]
+            indices = vectors[index].indices[mask]
+            keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
+            kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
+            if kept.size != 0:
+                document = np.concatenate((document,kept), axis = 0)
+        return document        
+    
+    def filtered_big_df(df): # construct frequency lemma df
+        bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
+        if bigrams_comments.size != 0:
+            bigrams_comments = np.hstack(bigrams_comments)
+        val, count = np.unique(bigrams_comments, return_counts=True)
+        count = count/len(bigrams_comments)
+        return pd.DataFrame({"Lemma": val, 'Freq': count}).sort_values(by='Freq', ascending=False) # sorted df
+
+    # Negatives comments
+    bigrams_neg = filtered_big_df(sim_users_neg)   
+    bigrams_neg = bigrams_neg.head(x) # Take top x bigrams as predicted user's comment
+    bigrams_neg_user = filtered_big_df(user_neg)
+    
+    # Find intersection
+    bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
+    
+    # Positive comments
+    bigrams_pos = filtered_big_df(sim_users_pos)
+    bigrams_pos = bigrams_pos.head(x) # Take top x bigrams as predicted user's comment
+    bigrams_pos_user = filtered_big_df(user_pos)
+
+    # Find intersection
+    bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
+
+    # Intersection between correct and predicted bigrams
+    inter_pos = len(bigrams_pos)
+    inter_neg = len(bigrams_neg)
+    
+    return  inter_pos, inter_neg
+
+def knn_comments_count_topx_nn(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, x=20):    
+    sim_users_neg, sim_users_pos, user_neg, user_pos = knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
+                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
+    pos_count, neg_count = count_intersect_topx_nn(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x)
+    return pos_count, neg_count
+
+""" Intersection with predicted user's comment and actual user's comment, with norm by number of comments """
+
+# using tf idf filtering, count number of intersection in neg and pos
+def count_intersect_topx(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x): # user id 
+
+    def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
+        document = np.array([])
+
+        for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+            g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
+            values = vectors[index].data  # Non-zero values in the sparse matrix
+            mask = values >= threshold
+            values = values[mask]
+            indices = vectors[index].indices[mask]
+            keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
+            kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
+            if kept.size != 0:
+                document = np.concatenate((document,kept), axis = 0)
+        return document        
+    
+    def filtered_big_df(df): # construct frequency lemma df
+        bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
+        if bigrams_comments.size != 0:
+            bigrams_comments = np.hstack(bigrams_comments)
+        val, count = np.unique(bigrams_comments, return_counts=True)
+        count = count/len(bigrams_comments)
+        return pd.DataFrame({"Lemma": val, 'Freq': count}).sort_values(by='Freq', ascending=False) # sorted df
+
+    # Negatives comments
+    bigrams_neg = filtered_big_df(sim_users_neg)   
+    bigrams_neg = bigrams_neg.head(x) # Take top x bigrams as predicted user's comment
+    bigrams_neg_user = filtered_big_df(user_neg)
+    
+    # Find intersection
+    bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
+    
+    # Positive comments
+    bigrams_pos = filtered_big_df(sim_users_pos)
+    bigrams_pos = bigrams_pos.head(x) # Take top x bigrams as predicted user's comment
+    bigrams_pos_user = filtered_big_df(user_pos)
+
+    # Find intersection
+    bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
+
+    # Intersection between correct and predicted bigrams
+    inter_pos = len(bigrams_pos)/len(bigrams_pos_user) if len(bigrams_pos_user) else 0
+    inter_neg = len(bigrams_neg)/len(bigrams_neg_user) if len(bigrams_neg_user) else 0
+    
+    return  inter_pos, inter_neg
+
+def knn_comments_count_topx(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, x=20):    
+    sim_users_neg, sim_users_pos, user_neg, user_pos = knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
+                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
+    pos_count, neg_count = count_intersect_topx(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x)
+    return pos_count, neg_count
