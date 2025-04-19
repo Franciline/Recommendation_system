@@ -79,15 +79,15 @@ background-color: #e0e0e0;
 }
 
 .dropdown-reco-games {
-    height: 0;
-    overflow: hidden;
-    transition: height 0.4s ease-in-out;
+    max-height: 0;
+    overflow: scroll;
+    transition: max-height 0.4s ease-in-out;
     padding: 0;
 }
 
 .dropdown-reco-games.open {
-    height: 300px;
-    transition: height 0.4s ease-in-out;
+    max-height: 500px;
+    transition: max-height 0.4s ease-in-out;
 }
   
 
@@ -103,4 +103,14 @@ background-color: #e0e0e0;
     border-radius: 10px;
     width: 100%;
 } 
+
+.cluster-theme-header {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 999;
+    font-weight: bold;
+    font-size: 22px;
+}
+
 
