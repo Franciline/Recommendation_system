@@ -515,7 +515,7 @@ def count_intersect_topx_nn(sim_users_neg, sim_users_pos, user_neg, user_pos, th
 def knn_comments_count_topx_nn(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, x=20):    
     sim_users_neg, sim_users_pos, user_neg, user_pos = knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                                 mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-    pos_count, neg_count = count_intersect_topx(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x)
+    pos_count, neg_count = count_intersect_topx_nn(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, x)
     return pos_count, neg_count
 
 """ Intersection with predicted user's comment and actual user's comment, with norm by number of comments """
