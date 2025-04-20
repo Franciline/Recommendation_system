@@ -3,17 +3,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from collections import Counter
 from nltk.collocations import BigramCollocationFinder, BigramAssocMeasures
 
 from reco_systems.user_game_matrix import *
 from reco_systems.CF_knn import *
 from reco_systems.evaluation import *
 
-from nltk.collocations import BigramCollocationFinder, BigramAssocMeasures
 
 # Counting freq, for bleu rouge
-
-
 
 # for corpus
 def words_freq(data, corpus) -> pd.DataFrame:
@@ -139,7 +137,7 @@ def evaluate_big(func, n_users, nb_iters, games_to_consider, matrix_ratings, mas
     return df_pos_neg, group_means
 
 
-
+# functions for the intersection
 
 def create_df(ngram_finder, ngram_stat):
         bigram_freq = ngram_finder.score_ngrams(ngram_stat)
@@ -179,19 +177,18 @@ def _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings, mask_ratings, c
     recalc_cos_similarity(user_ind, matrix_ratings, cos_sim_matrix)
 
     # choice of similar users
-    
+    knn_all_user = get_KNN(cos_sim_matrix, users_table.shape[0], user_ind)
+
     match type:
         case 'simi':
-            sim_users =  get_KNN(cos_sim_matrix, k, user_ind)
+            sim_users =  knn_all_user[:k]
         case 'less_simi':
-            sim_users =  get_KNN(cos_sim_matrix, users_table.shape[0], user_ind)
-            sim_users = sim_users[-k:]
+            sim_users = knn_all_user[-k:]
         case 'random':
-            sim_users =  get_KNN(cos_sim_matrix, users_table.shape[0], user_ind)
-            sim_users = np.random.choice(sim_users, size=k, replace=False)
+            sim_users = np.random.choice(knn_all_user, size=k, replace=False)
               
     pred_ratings, mask_pred_ratings = predict_ratings_baseline(matrix_ratings, mask_ratings,
-                                                                sim_users, cos_sim_matrix, user_ind)
+                                                                knn_all_user[:k], cos_sim_matrix, user_ind)
     
     # restore
     matrix_ratings[user_ind, :], mask_ratings[user_ind, :] = prev_ratings, prev_mask_ratings
@@ -220,11 +217,11 @@ def _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings, mask_ratings, c
 
     return sim_users_neg, sim_users_pos, user_neg, user_pos
 
-# -------------------------------------------- CHANGES
+# -------------------------------------------- Evaluations
 
 """ Count the number of bigrams in the intersection, avg per game, no set"""
 # using tf idf filtering, count number of intersection in neg and pos
-def _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens): # user id      
+def _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx): # user id      
         
     def one_game_score(user_com, sim_users_com): # NO SET
         # for one game, list of score for all comment with user
@@ -232,10 +229,14 @@ def _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, thresho
         user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
         document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
         
+        if topx:
+            df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False).head(topx)
+            intersect_document = df_document[df_document['Bigrams'].isin(user_big)]
+            return np.sum(intersect_document['Freq'])
+            
         # check intersection
         intersect = [big for big in document if big in user_big] # intersection no clipping
-    
-        return len(intersect) if len(intersect) else 0
+        return len(intersect) #/len(sim_users_com) to normalize by number of comments
         # ---------------------
 
     neg, pos = [], []
@@ -262,10 +263,12 @@ def _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, thresho
     return np.mean(pos) if pos else 0, np.mean(neg) if neg else 0
 
 # type: random, simi, less_simi
-def knn_comments_count_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):    
+def knn_comments_count_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
     sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                                 mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-    pos_count, neg_count = _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens)
+   
+    pos_count, neg_count = _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
+
     return pos_count, neg_count
 
 # ------------------------------------------------- OK
@@ -273,27 +276,7 @@ def knn_comments_count_v(user_id, games_to_consider, matrix_ratings, mask_rating
 """ Recall (ROUGE like), intersection/nb bigrams user, for each game, no set (with clipping)"""
 
 # using tf idf filtering, count number of intersection in neg and pos
-def _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens): # user id 
-        # calculate the intersection between user and neighbors bigrams
-        # def f_all_comment(comment_grp): 
-        #     # filters the bigrams of comment using tf idf
-        #     document = np.array([])
-
-        #     for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
-        #         # applying threshold
-        #         g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
-        #         values = vectors[index].data  # Non-zero values in the sparse matrix
-        #         mask = values >= threshold
-        #         values = values[mask]
-        #         indices = vectors[index].indices[mask]
-        #         keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
-        #         kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
-                
-        #         if kept.size != 0:
-        #             document = np.concatenate((document,kept), axis = 0)
-
-        #     # document contains bigrams comments
-        #     return document        
+def _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx): # user id 
         
         def one_game_score(user_com, sim_users_com): # NO SET
             # for one game, list of score for all comment with user
@@ -302,9 +285,19 @@ def _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, thre
             user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
             document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
 
+            if topx:
+                # clipping
+                df_user_big = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+                df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False).head(topx)
+
+                intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
+                intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+                intersection = intersection.sort_values(by="Freq_inter")
+
+                return np.sum(intersection['Freq_inter'])/len(user_big) if len(user_big) else 0
+            
             # check intersection, no clipping
             intersect = [big for big in user_big if big in document] # intersection with clipping
-            
             return len(intersect)/len(user_big) if len(user_big) else 0
                 
         # ---------------------
@@ -336,43 +329,28 @@ def _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, thre
         # needs to clip in rouge, else when dividing by number of user's bigrams, might >1
 
 # type: random, simi, less_simi
-def knn_comments_ROUGE_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):    
+def knn_comments_ROUGE_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
     sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                                 mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-    pos_prop, neg_prop = _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens)
+    pos_prop, neg_prop = _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
     return pos_prop, neg_prop
 
 """ Precision (BLEU like), intersection/nb bigrams neighbors, for each game no set"""
 
 # using tf idf filtering, count number of intersection in neg and pos
-def _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens): # user id 
+def _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx): # user id 
         # calculate the intersection between user and neighbors bigrams
-        
-        # def f_all_comment(comment_grp): 
-        #     # filters the bigrams of comment using tf idf
-        #     document = np.array([])
-
-        #     for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
-        #         # applying threshold
-        #         g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
-        #         values = vectors[index].data  # Non-zero values in the sparse matrix
-        #         mask = values >= threshold
-        #         values = values[mask]
-        #         indices = vectors[index].indices[mask]
-        #         keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
-        #         kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
-                
-        #         if kept.size != 0:
-        #             document = np.concatenate((document,kept), axis = 0)
-
-        #     # document contains bigrams comments
-        #     return document        
         
         def one_game_score(user_com, sim_users_com): # NO SET
             # for one game, list of score for all comment with user
             user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
             document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
-
+            
+            if topx:
+                df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False).head(topx)
+                intersect_document = df_document[df_document['Bigrams'].isin(user_big)]
+                return np.sum(intersect_document['Freq'])/len(document) if len(document) else 0
+            
             # check intersection, no clipping
             intersect = [big for big in document if big in user_big] # intersection no clipping
             
@@ -406,14 +384,11 @@ def _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, 
         return np.mean(pos) if pos else 0, np.mean(neg) if neg else 0
 
 # type: random, simi, less_simi
-def knn_comments_BLEU_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):    
+def knn_comments_BLEU_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
     sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                         mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
     
-    score_pos, score_neg = _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens)
+    score_pos, score_neg = _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
     return score_pos, score_neg
 
 # ------------------------------------------------- OK
-
-# topx variantes 
-
