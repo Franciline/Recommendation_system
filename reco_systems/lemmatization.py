@@ -1,14 +1,11 @@
 
 from nltk.corpus import stopwords
-from nltk.stem.snowball import FrenchStemmer
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from nltk.util import ngrams
+import numpy as np
 from unidecode import unidecode
 import pandas as pd
 from string import punctuation
 from nltk import word_tokenize
 from treetaggerwrapper import TreeTagger
-from typing import Union
 
 
 def apply_words_limit(text: pd.Series, min_words_nb: int) -> pd.DataFrame:
@@ -155,3 +152,66 @@ def simplify_VER_POS(words_lemmatized: pd.DataFrame) -> pd.DataFrame:
     mask = words_lemmatized[(~verbes) | ((verbes) & (words_lemmatized["Lemma"].str.match(regex)))]
     mask.loc[:, "POS"] = mask["POS"].str.replace(r'VER:.*', 'VER', regex=True)
     return mask
+
+
+def lemmatize_comment(phrases: pd.DataFrame, tagdir: str, lemmas: pd.DataFrame):
+    """Function useful for generating comments with embeddings."""
+    tagger = TreeTagger(TAGDIR=tagdir, TAGLANG="fr")
+
+    text = phrases["Phrases"]
+
+    # Remove punctuation
+    FR_stopwords = stopwords.words("french")
+    FR_stopwords += ['donc', 'alors', 'que', 'qui', 'car', 'parce', 'ca']
+    FR_stopwords.remove("ne")
+    FR_stopwords.remove("pas")
+
+    text = text.str.lower()
+    # N' ... pas -> Ne pas
+    text = text.str.replace("n'", "ne ")
+
+    # Remove remaining punctuation
+    punc_to_delete = punctuation
+    punc_to_delete += "…•"
+    trans_table = str.maketrans(punc_to_delete, " " * len(punc_to_delete))
+    text = text.str.translate(trans_table)
+
+    # Remove stopwords
+    text = text.apply(lambda x: " ".join([word for word in x.split() if word not in FR_stopwords]))
+
+    # Tokenization
+    # text_df = text.to_frame().rename(columns={0: "Tokens"})
+    words = pd.DataFrame({"Tokens": text.apply(word_tokenize), "Phrase line": text.index}).explode("Tokens")
+    words["index"] = np.arange(0, words.shape[0])
+
+    # Replace characters who which repeats 3 or more times
+    words["Tokens"] = words["Tokens"].str.replace(r"(.)\1{2,}", r"\1", regex=True)
+
+    # Remove Hashes (hex like words)
+    words = words[~words["Tokens"].str.match(r"^(?=.*\d)[a-z0-9]{20,}$", na=False)]
+
+    # Delete digits and words like 4eme, 10e
+    words["Tokens"] = words["Tokens"].str.replace(r"\d+\w*", " ", regex=True)
+
+    # Limit words lengths
+    words["Len"] = words["Tokens"].str.len()
+    words = words[(words["Len"] > 1) & (words["Len"] < 20)].drop(columns="Len")
+
+    # Lemmatization
+    tagger = TreeTagger(TAGDIR=tagdir, TAGLANG="fr")
+    all_words = words["Tokens"].unique()
+
+    lemmas_df = pd.DataFrame(data={"Lemma": tagger.tag_text(all_words)})
+
+    # Split return value of TreeTagger into Token (word) | Part of Speech | Lemma
+    lemmas_df = lemmas_df["Lemma"].str.split('\t', expand=True).set_axis(["Tokens", "POS", "Lemma"], axis=1)
+
+    # Change 'ne' and 'pas' part of speech
+    lemmas_df.loc[lemmas_df["Lemma"].isin(["ne", "pas"]), "POS"] = "NEG"
+
+    # Strip accents
+    lemmas_df.loc[:, "Lemma"] = lemmas_df["Lemma"].apply(unidecode)
+
+    # Select lemmas in corpus
+    lemmas_df = lemmas_df[lemmas_df["Lemma"].isin(lemmas["Lemma"])]
+    return lemmas_df.merge(words, on="Tokens").sort_values(["Phrase line", "index"]).groupby("Phrase line")["Lemma"].apply(" ".join)
