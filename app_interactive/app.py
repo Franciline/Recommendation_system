@@ -60,15 +60,16 @@ Best rated
 -------
 """
 
+from PIL import ImageColor
+from dash_extensions import Lottie
+import dash_deck
+import pydeck as pdk
+import numpy as np
+import pandas as pd
+from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
+from plotly.colors import qualitative
 import os
 import dash_bootstrap_components as dbc
-from plotly.colors import qualitative
-from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
-import pandas as pd
-import numpy as np
-import pydeck as pdk
-import dash_deck
-from PIL import ImageColor
 
 
 def get_deck(points, view, point_size=2.5):
@@ -179,6 +180,13 @@ colors = {0: "#ca5310", 25: "#bb4d00", 12: "#8f250c", 19: "#691e06",
           24: "#e53d00", 10: "#392f5a"
           }
 
+# For animation fireworks
+fw_hidden = dict(loop=False, autoplay=False,
+                 style={"display": "none", "position": "absolute", "left": "15%", "top": "10%"})
+fw_shown = dict(loop=False, autoplay=True,
+                style={"display": "block", "position": "absolute", "left": "15%", "top": "10%"})
+special_id = 1943
+
 # Coloring : hex to rgb
 colors_points = [list(ImageColor.getcolor(colors[cluster], "RGB")) for cluster in clusters]
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -230,11 +238,15 @@ app.layout = html.Div([
     # interval to allow animation of closing dropdown-reco-games
     dcc.Interval(id='clear-dropdown-interval', interval=400, n_intervals=0, disabled=True),
 
+
     html.Div([
         # Header when only one cluster is shown
-        html.Div(children="Tout les clusters", id="cluster-theme-header", className='cluster-theme-header'),
 
+        html.Div(children="Tout les clusters", id="cluster-theme-header", className='cluster-theme-header'),
+        Lottie(id="fireworks", options=fw_hidden,
+               url="https://lottie.host/7be84abc-372f-4d26-9794-96ba22ca6f6d/Cx1QOvmfIU.json"),
         html.Div([
+
              dash_deck.DeckGL(
                  id="tsne",
                  data=deck.to_json(),
@@ -257,6 +269,7 @@ app.layout = html.Div([
 
             html.Div(children=[dcc.Dropdown(options=[{"label": "Choisir un profile", "value": "..."}] +
                                             [{"label": f"User {username}", "value": index}
+                                             if index != special_id else {"label": f"🎉User {username}🎉", "value": index}
                                              for username, index in users_info[["Username", "User index"]].itertuples(index=False)],
                                             value="...", searchable=True, clearable=False, id="users-dropdown", disabled=True,
                                             style={"width": "95%", "flex": "1"}),
@@ -293,7 +306,7 @@ def thematic_clusters(value):
     global df_all
 
     if value is None:
-        return no_update, no_update, no_update, no_update
+        return (no_update,) * 4
 
     if value == "Tout les clusters":
         points = df_all
@@ -328,11 +341,11 @@ def thematic_clusters(value):
 def zoom_cluster(clickInfo, current_cluster):
     """Plot only one cluster on a click on one of its points"""
     if (clickInfo is None) or ("object" not in clickInfo) or clickInfo["object"] is None:
-        return no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 5
 
     clicked_cluster = clickInfo["object"]["cluster"]
     if current_cluster == clicked_cluster:
-        return no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 5
 
     points = df_all[df_all["cluster"] == clicked_cluster]
 
@@ -392,13 +405,15 @@ def display_game_info(click_info):
     Output('tsne', 'data'),
     Output('dropdown-reco-games', 'className', allow_duplicate=True),
     Output('button-reco-games', 'className', allow_duplicate=True),
+    Output('fireworks', 'options', allow_duplicate=True),
 
     Input('mode-button', 'n_clicks'),  # n_clicks is not used, but Dash demands non empty property
     State('explore-mode', 'data'),
     State('plotted-data', 'data'),
+    State('current-user', 'data'),
     prevent_initial_call=True
 )
-def change_mode(click_info, mode_data, plotted_games_index):
+def change_mode(click_info, mode_data, plotted_games_index, current_user):
     """Change mode :
         1. recommendation -> exploration or
         2. exploration    -> recommendation
@@ -408,20 +423,22 @@ def change_mode(click_info, mode_data, plotted_games_index):
 
     global themes, df_all, colors_points, initial_view_state
     if click_info is None:
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 7
 
     points = df_all[df_all["game index"].isin(plotted_games_index)]
 
     # Exploration mode -> go to Reco mode
     if mode_data == True:
-        print("Change to empty")
         points["name"] = ""  # nothing on hover
-        return False, "...", "🔁 Exploration", False, no_update, no_update, no_update
+        common = False, "...", "🔁 Exploration", False,
+        if current_user == special_id:
+            return *common, *(no_update,) * 3, fw_hidden
+        return *common, *(no_update,) * 4
 
     # Reco mode -> go to Exploration mode. Dropdown : cluster themes.
     # Points will be replotted by 'get_user_tsne'. Same for changed in 'df_all'
 
-    return True, "...", "🔁 Recommandation", True, no_update, 'dropdown-reco-games', 'button-reco-games'
+    return True, "...", "🔁 Recommandation", True, no_update, 'dropdown-reco-games', 'button-reco-games', no_update
 
 
 @app.callback(
@@ -431,6 +448,7 @@ def change_mode(click_info, mode_data, plotted_games_index):
     Output('button-reco-games', 'disabled'),
     Output('dropdown-reco-games', 'className'),
     Output('button-reco-games', 'className'),
+    Output('fireworks', 'options', allow_duplicate=True),
 
     Input("users-dropdown", "value"),
     State("plotted-data", "data"),
@@ -447,7 +465,7 @@ def get_user_tsne(user_index, plotted_games_index, explore_mode):
     global initial_view_state, df_all
 
     if user_index is None or plotted_games_index is None:
-        return no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 6
 
     points = df_all[df_all["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
@@ -465,7 +483,7 @@ def get_user_tsne(user_index, plotted_games_index, explore_mode):
         view = recalc_view(points, games_info, initial_view_state)
 
         new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
-        return new_deck.to_json(), {"text": "{name}"}, no_update, True, 'dropdown-reco-games', 'button-reco-games'
+        return new_deck.to_json(), {"text": "{name}"}, no_update, True, 'dropdown-reco-games', 'button-reco-games', fw_hidden
 
     # No user change -> the event is not fired
 
@@ -497,13 +515,15 @@ def get_user_tsne(user_index, plotted_games_index, explore_mode):
 
     points = df_all[df_all["game index"].isin(plotted_games_index)]
 
-    # points["name"] = np.round(np.clip(nmf_pred[user_index, plotted_games_index]
-    #                           * 8 + 2, 0, 10), 1)
-
     view = recalc_view(points, games_info, initial_view_state)
     new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
 
-    return new_deck.to_json(), {"html": "<b>Note du jeu:</b> {name}"}, user_index, False, 'dropdown-reco-games', 'button-reco-games'
+    common = new_deck.to_json(), {
+        "html": "<b>Note du jeu:</b> {name}"}, user_index, False, 'dropdown-reco-games', 'button-reco-games'
+
+    if user_index == special_id:
+        return *common,  fw_shown
+    return *common, fw_hidden
 
 
 @app.callback(
@@ -574,17 +594,14 @@ def _get_reco_game_div(game, rating):
 def go_to_point(n_clicks, plotted_games_index, current_cluster):
 
     # Prevent initial update
-    if not any(n > 0 for n in n_clicks):
-        return no_update, no_update, no_update
-
-    if ctx.triggered_id is None:
-        return no_update, no_update, no_update
+    if not any(n > 0 for n in n_clicks) or ctx.triggered_id is None:
+        return (no_update,) * 3
 
     game_info = df_all[df_all["game index"] == ctx.triggered_id["index"]].iloc[0]
     selected_cluster = game_info["cluster"].item()
 
     if selected_cluster == current_cluster:
-        return no_update, no_update, no_update
+        return (no_update,) * 3
 
     points = df_all[df_all["cluster"] == selected_cluster]
 
