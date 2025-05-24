@@ -1,75 +1,13 @@
-# Requires Dash 2.17.0 or later
-"""
-TO DO :
-- Exploration mode    : print summary of comments on hover
-- Recommendation mode : consider printing comment that user gave to a game)
-"""
-
-"""
-Clusters grouped together :
-
--------
-Worst rated cluster
-10
-392f5a
--------
-
--------
-Construction. Batiments. Jeunes/famille
-0 - 25 - 12 - 19
-ca5310 bb4d00 8f250c 691e06 -> Brown
--------
-
--------
-Rapide. Ressources, tactique
-20 - 27
-c05299 822faf -> Purple
--------
-
--------
-Collection (trésors, cartes)
-17 - 14 - 1 - 8 - 4
-ffea00 ffdd00 ffd000 ffc300 ffb700 ffaa00 -> Yellow
--------
-
--------
-Orienté sur le réflexion (logique, puzzle, détective, réponse aux questions)
-23 - 9 - 6 - 3 (y compris échecs) - 29 (~bluffing, role playing) - 26
-
-90caf9 2196f3 1e88e5 1976d2 1565c0 0d47a1 -> Blue
--------
-
--------
-Orienté sur le gestion des ressources, colonisation, guerre, différentes époques
-13 (difficle à comprendre, présence des animaux, centroide est proche à 5)
-5 - 13 - 18 - 28 (différentes époques) - 22 - 11 - 16 - 21 - 15
-
-5 : 10451d
-155d27 1a7431 208b3a 25a244 2dc653 4ad66d 6ede8a 92e6a7 b7efc5 -> Green
--------
-
--------
-Jeux longs & complexes
-2 - 7 (great visuals aussi)
-60d394 aaf683 -> Green bright
--------
-
--------
-Best rated
-24
--------
-"""
-
-from PIL import ImageColor
-from dash_extensions import Lottie
-import dash_deck
-import pydeck as pdk
-import numpy as np
-import pandas as pd
-from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
-from plotly.colors import qualitative
+from math import log2
 import os
 import dash_bootstrap_components as dbc
+from plotly.colors import qualitative
+from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
+import pandas as pd
+import numpy as np
+import pydeck as pdk
+import dash_deck
+from dash_extensions import Lottie
 
 
 def get_deck(points, view, point_size=2.5):
@@ -106,14 +44,16 @@ def compute_point_size(n_points, min_points=150, max_points=600, min_size=2.5, m
     return size
 
 
-def compute_zoom(n_points, min_points=150, max_points=400, min_zoom_level=0, max_zoom_level=4):
-    n_clipped = max(min_points, min(n_points, max_points))
+def compute_zoom(points, n_points, min_points=150, max_points=400, min_zoom_level=0, max_zoom_level=4):
+    range_x = points["x"].max() - points["x"].min()
+    range_y = points["y"].max() - points["y"].min()
+    range_z = points["z"].max() - points["z"].min()
+    max_range = max(range_x, range_y, range_z)
 
-    norm = (max_points - n_clipped) / (max_points - min_points)
-
-    zoom = min_zoom_level + norm * (max_zoom_level - min_zoom_level)
-    print(f"Estimated zoom on {n_points} points", zoom)
-    return zoom
+    if max_range == 0:
+        return 16
+    zoom = log2(350 / max_range)
+    return max(min(zoom, 5), 0)
 
 
 def get_view_params(points):
@@ -134,30 +74,8 @@ def recalc_view(points, game_info, initial_view_state):
     else:
         lat, lon, target = get_view_params(points)
         view = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-                             controller=True, rotation_x=0, rotation_orbit=0, zoom=compute_zoom(points.shape[0]))
+                             controller=True, rotation_x=0, rotation_orbit=0, zoom=compute_zoom(points, points.shape[0]))
     return view
-
-    # def view_state_to_dict(view_state):
-    #     return {
-    #         "latitude": view_state.latitude,
-    #         "longitude": view_state.longitude,
-    #         "target": view_state.target,
-    #         "controller": view_state.controller,
-    #         "rotation_x": view_state.rotation_x,
-    #         "rotation_orbit": view_state.rotation_orbit,
-    #         "zoom": view_state.zoom,
-    #     }
-
-    # def dict_to_view_state(state_dict):
-    #     return pdk.ViewState(
-    #         latitude=state_dict["latitude"],
-    #         longitude=state_dict["longitude"],
-    #         target=state_dict["target"],
-    #         controller=state_dict["controller"],
-    #         rotation_x=state_dict["rotation_x"],
-    #         rotation_orbit=state_dict["rotation_orbit"],
-    #         zoom=state_dict["zoom"]
-    #     )
 
 
 n_clusters = 30  # -> 30 colors to generate
@@ -167,82 +85,67 @@ clusters = np.load("clusters.npy", mmap_mode="r")        # Clusters assignment
 # NNMF prediction U @ G.T (already existing ratings are replaced by true ones)
 nmf_pred = np.load("nnmf_prediction.npy", mmap_mode="r")
 
-games_info = pd.read_csv("games_info.csv", index_col=0)  # info on games
-users_info = pd.read_parquet("users_info.parquet")  # info on users
+# users_info = pd.read_parquet("users_info.parquet")  # info on users
+users_info = pd.read_json("users_info.json", orient="records")
+games_info = pd.read_json("games_info.json", orient="records")
 
-
-colors = {0: "#ca5310", 25: "#bb4d00", 12: "#8f250c", 19: "#691e06",
-          20: "#c05299", 27: "#822faf",
-          17: "#ffea00", 14: "#ffdd00", 1: "#ffc300", 8: "#ffb700", 4: "#ffaa00",
-          23: "#90caf9", 9: "#2196f3", 6: "#1e88e5", 3: "#1976d2", 29: "#1565c0", 26: "#0d47a1",
-          5: "#10451d", 13: "#155d27", 18: "#1a7431", 28: "#208b3a", 22: "#25a244", 11: "#2dc653", 16: "#4ad66d", 21: "#6ede8a", 15: "#92e6a7",
-          2: "#60d394", 7: "#aaf683",
-          24: "#e53d00", 10: "#392f5a"
-          }
+# For themes-dropdown
+themes = {
+    "Tous les clusters": [],
+    "🧩🕵️ Logique et Déduction": [22, 23],
+    "🏗️🏰 Construction & expansion": [0, 19],
+    "🧠⚡ Rapide & Tactique": [14, 20],
+    "📚⏳ Longs & complexes": [2, 9, 13, 25, 29],
+    "💎🃏 Collecte":  [1, 17, 26],
+    "🪖💣 Guerre": [5],
+    "🏛️🎲 Eurogames": [15, 16],
+    "🌍🏺 Civilisation": [12, 18, 21],
+    "🗡️🚩 Capture territoire": [3, 11, 27],
+    "🌅🖼️ Superbes visuels": [4, 8],
+    "🐉📜 Culture | Fantaisie": [6, 7, 28],
+    "👎 Coups de blues": [10],
+    "🏆 Coups de coeurs": [24],
+}
+themes_inverse = {cluster: theme for theme, clusters in themes.items() for cluster in clusters}
+# themes_names = games_info["name"]
+colors_points = games_info["color"]
 
 # For animation fireworks
 fw_hidden = dict(loop=False, autoplay=False,
                  style={"display": "none", "position": "absolute", "left": "15%", "top": "10%"})
 fw_shown = dict(loop=False, autoplay=True,
                 style={"display": "block", "position": "absolute", "left": "15%", "top": "10%"})
-special_id = 1943
+special_index = 39  # index
 
-# Coloring : hex to rgb
-colors_points = [list(ImageColor.getcolor(colors[cluster], "RGB")) for cluster in clusters]
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# TO DO : once OK -> save to file
-df_all = pd.DataFrame(data={
-    "game_id": games_info["Game id"],
-
-    "x": games_tsne[:, 0].tolist(),
-    "y": games_tsne[:, 1].tolist(),
-    "z": games_tsne[:, 2].tolist(),
-
-    "color": colors_points,
-    "cluster": clusters,
-    "name": clusters,
-    "game index": games_info["Game index"]
-})
-
 # View
-lat, lon, target = get_view_params(df_all)
+lat, lon, target = get_view_params(games_info)
 initial_view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-                                   controller=True, rotation_x=15, rotation_orbit=30, zoom=0)
+                                   controller=True, rotation_x=15, rotation_orbit=30, zoom=-0.2)
 
-deck = get_deck(df_all, initial_view_state)
+deck = get_deck(games_info, initial_view_state)
 
-# For themes-dropdown
-themes = {
-    "Tout les clusters": [],
-    "🧩🕵️ Logique et Déduction": [23, 9, 6, 3, 29, 26],
-    "🏗️👨‍👩‍👧‍👦 Construction": [0, 25, 12, 19],
-    "🧠⚡ Rapide et Tactique": [20, 27],
-    "📚⏳ Longs et complexes": [2, 7],
-    "💎🃏 Collecte":  [17, 14, 1, 8, 4],
-    "🏰🕰️ Historique": [5, 13, 18, 28, 22, 11, 16, 21, 15],
-    "👎 Coups de blues": [10],
-    "🏆 Coups de coeurs": [24],
-}
-themes_inverse = {cluster: theme for theme, clusters in themes.items() for cluster in clusters}
 
 # Main layout : TSNE (DeckGL) on the left, sidebar on the right
 app.layout = html.Div([
     dcc.Store(id="explore-mode", data=True),  # True if exploration mode, False if recommendation mode
-    dcc.Store(id="plotted-data", data=df_all["game index"].values),  # store plotted games indices
-    dcc.Store(id="current-cluster", data=None),  # allows not to change cluster if only one cluster shown.
+    dcc.Store(id="plotted-data", data=games_info["game index"].values),  # store plotted games indices
+
+    # allows not to change cluster if only one cluster shown. >= 0 if one cluster. -1 if thematic cluster. -2 if all clusters
+    dcc.Store(id="current-cluster", data=None),
 
     # makes sense in reco mode. Index of current chosen user. Necessary to show recommended games
     dcc.Store(id="current-user", data=None),
 
     # interval to allow animation of closing dropdown-reco-games
     dcc.Interval(id='clear-dropdown-interval', interval=400, n_intervals=0, disabled=True),
-
+    dcc.Interval(id='delete-animation', interval=2800, n_intervals=0, disabled=True),
 
     html.Div([
         # Header when only one cluster is shown
 
-        html.Div(children="Tout les clusters", id="cluster-theme-header", className='cluster-theme-header'),
+        html.Div(children="Tous les clusters", id="cluster-theme-header", className='cluster-theme-header'),
         Lottie(id="fireworks", options=fw_hidden,
                url="https://lottie.host/7be84abc-372f-4d26-9794-96ba22ca6f6d/Cx1QOvmfIU.json"),
         html.Div([
@@ -263,13 +166,13 @@ app.layout = html.Div([
             html.Div([
                 html.Button("🔁 Recommandation", id="mode-button"),  # button to change mode : reco ou exploration
                 dcc.Dropdown(options=[{"label": t, "value": t} for t in themes],
-                             value='Tout les clusters', id='themes-dropdown', searchable=False, clearable=False, className="rounded-dropdown",
+                             value='Tous les clusters', id='themes-dropdown', searchable=False, clearable=False, className="rounded-dropdown",
                              style={"width": "100%", "flex": "1"})
             ], style={"padding": "20px", "display": "flex", "width": "100%", 'alignItems': 'center', "height": "fitContent"}),
 
-            html.Div(children=[dcc.Dropdown(options=[{"label": "Choisir un profile", "value": "..."}] +
+            html.Div(children=[dcc.Dropdown(options=[{"label": "Choisir un profil", "value": "..."}] +
                                             [{"label": f"User {username}", "value": index}
-                                             if index != special_id else {"label": f"🎉User {username}🎉", "value": index}
+                                             if index != special_index else {"label": f"🎉User {username}🎉", "value": index}
                                              for username, index in users_info[["Username", "User index"]].itertuples(index=False)],
                                             value="...", searchable=True, clearable=False, id="users-dropdown", disabled=True,
                                             style={"width": "95%", "flex": "1"}),
@@ -283,7 +186,7 @@ app.layout = html.Div([
             "width": "60vh",
             "backgroundColor": "#22223b",
             "height": "100vh",
-            "overflowY": "auto",
+            "overflowY": "scroll",
             "maxWidth": "60vh",
         },
         ),
@@ -299,29 +202,38 @@ app.layout = html.Div([
     Output('cluster-theme-header', 'children', allow_duplicate=True),
 
     Input('themes-dropdown', 'value'),
+    State('explore-mode', 'data'),
     prevent_initial_call=True,
 )
-def thematic_clusters(value):
+def thematic_clusters(value, explore_mode):
     """Plot only selected thematic clusters."""
-    global df_all
+    global games_info
 
     if value is None:
         return (no_update,) * 4
 
-    if value == "Tout les clusters":
-        points = df_all
+    current_cluster = -1
+    if value == "Tous les clusters":
+        points = games_info
         view_state = initial_view_state
+        current_cluster = -2
 
     else:
-        points = df_all[df_all["cluster"].isin(themes[value])]
-        target = [points.x.mean(), points.y.mean(), points.z.mean()]
-        lat, lon, target = get_view_params(points)
+        points = games_info[games_info["cluster"].isin(themes[value])]
 
-        view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-                                   controller=True, rotation_x=0, rotation_orbit=0, zoom=1.5)
+        if explore_mode:
+            points["name"] = points["game name year"]
+
+        view_state = recalc_view(points, games_info, initial_view_state)
+
+        # target = [points.x.mean(), points.y.mean(), points.z.mean()]
+        # lat, lon, target = get_view_params(points)
+
+        # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
+        #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=1.5)
 
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
-    return new_deck.to_json(), points["game index"].values, None, value
+    return new_deck.to_json(), points["game index"].values, current_cluster, value
 
 
 # Click on a cluster -> zoom on this cluster, hide clusters points
@@ -336,9 +248,10 @@ def thematic_clusters(value):
 
     Input('tsne', 'clickInfo'),
     State('current-cluster', 'data'),
+    State('explore-mode', 'data'),
     prevent_initial_call=True
 )
-def zoom_cluster(clickInfo, current_cluster):
+def zoom_cluster(clickInfo, current_cluster, explore_mode):
     """Plot only one cluster on a click on one of its points"""
     if (clickInfo is None) or ("object" not in clickInfo) or clickInfo["object"] is None:
         return (no_update,) * 5
@@ -347,11 +260,15 @@ def zoom_cluster(clickInfo, current_cluster):
     if current_cluster == clicked_cluster:
         return (no_update,) * 5
 
-    points = df_all[df_all["cluster"] == clicked_cluster]
+    points = games_info[games_info["cluster"] == clicked_cluster]
 
-    lat, lon, target = get_view_params(points)
-    view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-                               controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
+    if explore_mode:
+        points["name"] = points["game name year"]
+
+    view_state = recalc_view(points, games_info, initial_view_state)
+    # lat, lon, target = get_view_params(points)
+    # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
+    #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
 
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return None, new_deck.to_json(), points["game index"].values, clicked_cluster, themes_inverse[clicked_cluster]
@@ -366,20 +283,20 @@ def zoom_cluster(clickInfo, current_cluster):
 )
 def display_game_info(click_info):
     """Add selected game summary on a sidebar"""
-    global current_cluster
     if click_info is None:
         return [], {"display": "none"},
 
     if click_info["object"] is None:
         return [], {"display": "none"}
 
-    game_info = games_info[games_info["Game id"] == click_info["object"]["game_id"]].iloc[0].to_dict()
-    return [html.Div([html.H4(html.B(game_info["Game name year"]), style={"margin-bottom": "20px", "width": "80%"}),
-                      html.H3([f"{game_info['Rating']:.1f}", " ⭐"], style={"width": "20%", "textAlign": "right"})],
+    game_info = click_info["object"]
+
+    return [html.Div([html.H4(html.B(game_info["game name year"]), style={"margin-bottom": "20px", "width": "80%"}),
+                      html.H3([f"{game_info['rating']:.1f}", " ⭐"], style={"width": "20%", "textAlign": "right"})],
                      style={"display": "flex", "justifyContent": "spaceBetween"}),
-            html.P(html.P([html.B("🎲 Type: "), game_info['Type']])),
-            html.Div([html.P([html.B("👨‍👩‍👧‍👦 Joueurs: "), game_info['Players']]),
-                      html.P([html.B("🎂 Age: "), game_info['Age']])],
+            html.P(html.P([html.B("🎲 Type: "), game_info['type']])),
+            html.Div([html.P([html.B("👨‍👩‍👧‍👦 Joueurs: "), game_info['players']]),
+                      html.P([html.B("🎂 Age: "), game_info['age']])],
 
 
                      style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "width": "100%"}),
@@ -413,7 +330,7 @@ def display_game_info(click_info):
     State('current-user', 'data'),
     prevent_initial_call=True
 )
-def change_mode(click_info, mode_data, plotted_games_index, current_user):
+def change_mode(click_info, explore_mode, plotted_games_index, current_user):
     """Change mode :
         1. recommendation -> exploration or
         2. exploration    -> recommendation
@@ -421,22 +338,23 @@ def change_mode(click_info, mode_data, plotted_games_index, current_user):
     Change of colors on df is applied only if 'recommendation -> exploration'
     """
 
-    global themes, df_all, colors_points, initial_view_state
+    global themes, games_info, colors_points, initial_view_state
     if click_info is None:
-        return (no_update,) * 7
+        return (no_update,) * 8
 
-    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    # points = games_info[games_info["game index"].isin(plotted_games_index)]
+    # view = recalc_view(points, games_info, initial_view_state)
+    # new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
 
     # Exploration mode -> go to Reco mode
-    if mode_data == True:
-        points["name"] = ""  # nothing on hover
+    if explore_mode == True:
         common = False, "...", "🔁 Exploration", False,
-        if current_user == special_id:
+        if current_user == special_index:
             return *common, *(no_update,) * 3, fw_hidden
         return *common, *(no_update,) * 4
 
     # Reco mode -> go to Exploration mode. Dropdown : cluster themes.
-    # Points will be replotted by 'get_user_tsne'. Same for changed in 'df_all'
+    # Points will be replotted by 'get_user_tsne'. Same for changed in 'games_info'
 
     return True, "...", "🔁 Recommandation", True, no_update, 'dropdown-reco-games', 'button-reco-games', no_update
 
@@ -449,45 +367,46 @@ def change_mode(click_info, mode_data, plotted_games_index, current_user):
     Output('dropdown-reco-games', 'className'),
     Output('button-reco-games', 'className'),
     Output('fireworks', 'options', allow_duplicate=True),
+    Output('delete-animation', 'disabled', allow_duplicate=True),
 
     Input("users-dropdown", "value"),
     State("plotted-data", "data"),
     State('explore-mode', 'data'),
+    State('delete-animation', 'n_intervals'),
+    State('current-cluster', 'data'),
     prevent_initial_call=True
 )
-def get_user_tsne(user_index, plotted_games_index, explore_mode):
+def get_user_tsne(user_index, plotted_games_index, explore_mode, n_intervals, current_cluster):
     """Replot plotted games to change their color based on predicted ratings with NNMF
 
     Note :
-        !All! colors in 'df_all' are changed since it is more logical for a user to go explore other points
+        !All! colors in 'games_info' are changed since it is more logical for a user to go explore other points
     """
 
-    global initial_view_state, df_all
+    global initial_view_state, games_info
 
     if user_index is None or plotted_games_index is None:
-        return (no_update,) * 6
+        return (no_update,) * 8
 
-    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    points = games_info[games_info["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
 
-    print("User dropdown value changed to ", user_index)
+    # print("User dropdown value changed to ", user_index)
     if user_index == "...":  # No user selected
         if explore_mode:
-            df_all["name"] = df_all["cluster"]
-        else:
-            df_all["name"] = ""
+            games_info["name"] = games_info["theme"] if current_cluster == -2 else games_info["game name year"]
 
-        df_all["color"] = colors_points
+        games_info["color"] = colors_points
 
-        points = df_all[df_all["game index"].isin(plotted_games_index)]
+        points = games_info[games_info["game index"].isin(plotted_games_index)]
         view = recalc_view(points, games_info, initial_view_state)
 
         new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
-        return new_deck.to_json(), {"text": "{name}"}, no_update, True, 'dropdown-reco-games', 'button-reco-games', fw_hidden
+        return new_deck.to_json(), {"text": "{name}"}, no_update, True, 'dropdown-reco-games', 'button-reco-games', fw_hidden, True
 
     # No user change -> the event is not fired
 
-    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    points = games_info[games_info["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
 
     ratings = nmf_pred[user_index, :]
@@ -499,21 +418,21 @@ def get_user_tsne(user_index, plotted_games_index, explore_mode):
 
     # Reassign colors
     colors = np.stack([red, green, blue], axis=1).tolist()
-    df_all["color"] = colors
+    games_info["color"] = colors
 
     # Color rated games to blue
     user_info = users_info[users_info["User index"] == user_index]
 
-    mask = df_all["game index"].isin(user_info["Rated games index"].item())
-    df_all.loc[mask, "color"] = df_all.loc[mask, "color"].apply(lambda _: [0, 0, 255])
+    mask = games_info["game index"].isin(user_info["Rated games index"].item())
+    games_info.loc[mask, "color"] = games_info.loc[mask, "color"].apply(lambda _: [0, 0, 255])
 
     # Top 5 games are rose (fuxia)
-    mask = df_all["game index"].isin(user_info["Top games"].item())
-    df_all.loc[mask, "color"] = df_all.loc[mask, "color"].apply(lambda _: [255, 0, 161])
+    mask = games_info["game index"].isin(user_info["Top games"].item())
+    games_info.loc[mask, "color"] = games_info.loc[mask, "color"].apply(lambda _: [255, 0, 161])
 
-    df_all["name"] = np.round(np.clip(nmf_pred[user_index, :] * 8 + 2, 0, 10), 1)  # Predicted rating on hover
+    games_info["name"] = np.round(np.clip(nmf_pred[user_index, :] * 8 + 2, 0, 10), 1)  # Predicted rating on hover
 
-    points = df_all[df_all["game index"].isin(plotted_games_index)]
+    points = games_info[games_info["game index"].isin(plotted_games_index)]
 
     view = recalc_view(points, games_info, initial_view_state)
     new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
@@ -521,9 +440,9 @@ def get_user_tsne(user_index, plotted_games_index, explore_mode):
     common = new_deck.to_json(), {
         "html": "<b>Note du jeu:</b> {name}"}, user_index, False, 'dropdown-reco-games', 'button-reco-games'
 
-    if user_index == special_id:
-        return *common,  fw_shown
-    return *common, fw_hidden
+    if user_index == special_index and n_intervals == 0:  # fireworks only on 1st clickon special user
+        return *common,  fw_shown, False
+    return *common, fw_hidden, True
 
 
 @app.callback(
@@ -547,7 +466,7 @@ def show_reco_games(n_clicks, current_classname, current_user_index):
     # Top 5 games indices (recommended)
     user_info = users_info[users_info["User index"] == current_user_index]
     top_games = user_info["Top games"].values[0]
-    print(nmf_pred[current_user_index, top_games])
+
     children = [_get_reco_game_div(game, rating)
                 for game, rating in zip(top_games, np.clip(nmf_pred[current_user_index, top_games] * 8 + 2, 0, 10))]
 
@@ -565,13 +484,13 @@ def clear_children(n_intervals):
 
 
 def _get_reco_game_div(game, rating):
-    game_info = games_info[games_info["Game index"] == game]
+    game_info = games_info[games_info["game index"] == game]
 
-    return html.Div(html.Button([html.Div(html.B(game_info["Game name year"].item()), style={"textAlign": "left", "width": "80%", "overflowX": "hidden"}),
+    return html.Div(html.Button([html.Div(html.B(game_info["game name year"].item()), style={"textAlign": "left", "width": "80%", "overflowX": "hidden"}),
                                  html.Div([html.B(f"{rating:.1f}"), " ⭐"], style={"textAlign": "right", "width": "20%"})],
                                 style={"border": "none", "backgroundColor": "#ffffff",
                                        "display": "flex", "width": "100%"},
-                                id={"type": "reco-game", "index": game.item()}, n_clicks=0),
+                                id={"type": "reco-game", "index": game_info["game index"].item()}, n_clicks=0),
                     className="item-reco-games", style={"backgroundColor": "#ffffff",
                                                         "padding": "10px",
                                                         "display": "flex",
@@ -597,20 +516,31 @@ def go_to_point(n_clicks, plotted_games_index, current_cluster):
     if not any(n > 0 for n in n_clicks) or ctx.triggered_id is None:
         return (no_update,) * 3
 
-    game_info = df_all[df_all["game index"] == ctx.triggered_id["index"]].iloc[0]
+    game_info = games_info[games_info["game index"] == ctx.triggered_id["index"]].iloc[0]
     selected_cluster = game_info["cluster"].item()
 
     if selected_cluster == current_cluster:
         return (no_update,) * 3
 
-    points = df_all[df_all["cluster"] == selected_cluster]
-
-    lat, lon, target = get_view_params(points)
-    view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-                               controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
+    points = games_info[games_info["cluster"] == selected_cluster]
+    view_state = recalc_view(points, games_info, initial_view_state)
+    # lat, lon, target = get_view_params(points)
+    # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
+    #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
 
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return selected_cluster, new_deck.to_json(), points["game index"].to_list()
+
+
+@app.callback(
+    Output('delete-animation', 'disabled', allow_duplicate=True),
+    Output('fireworks', 'options', allow_duplicate=True),
+    Input('delete-animation', 'n_intervals'),
+    prevent_initial_call=True
+)
+def delete_animation(n_intervals):
+    print("delete", n_intervals)
+    return True, fw_hidden
 
 
 if __name__ == '__main__':
