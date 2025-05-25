@@ -4,7 +4,12 @@
     font-family: "DM Sans";
 }
 
-/* Dropdown styling */
+/* ----- */ 
+.rounded-dropdown .Select-control, 
+#users-dropdown .Select-control {
+    border-radius: 10px;
+    height: 100%;
+}
 
 .rounded-dropdown .Select-control, 
 #users-dropdown .Select-control {
@@ -21,8 +26,8 @@
 
 .rounded-dropdown .Select-option,
 #users-dropdown .Select-option {
-border-radius: 8px; 
-padding: 8px;       
+    border-radius: 8px; 
+    padding: 8px;       
 }
 
 .rounded-dropdown .Select-option:hover, 

@@ -89,6 +89,8 @@ nmf_pred = np.load("nnmf_prediction.npy", mmap_mode="r")
 users_info = pd.read_json("users_info.json", orient="records")
 games_info = pd.read_json("games_info.json", orient="records")
 
+special_user_comments = pd.read_json("special_user_comments.json", orient="records")
+
 # For themes-dropdown
 themes = {
     "Tous les clusters": [],
@@ -235,7 +237,7 @@ def thematic_clusters(value, explore_mode, curr_user_index):
 
         # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
         #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=1.5)
-
+    print(points["name"])
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return new_deck.to_json(), points["game index"].values, current_cluster, value
 
@@ -267,15 +269,10 @@ def zoom_cluster(clickInfo, current_cluster, explore_mode, curr_user_index):
 
     points = games_info[games_info["cluster"] == clicked_cluster]
 
-    print(curr_user_index)
     if explore_mode or curr_user_index == "":
         points.loc[:, "name"] = points["game name year"]
 
     view_state = recalc_view(points, games_info, initial_view_state)
-    # lat, lon, target = get_view_params(points)
-    # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-    #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
-
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return None, new_deck.to_json(), points["game index"].values, clicked_cluster, themes_inverse[clicked_cluster]
 
@@ -360,7 +357,7 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
 
     # Reco mode -> go to Exploration mode. Dropdown : cluster themes.
     # Points will be replotted by 'get_user_tsne'. Same for changed in 'games_info'
-
+    games_info = games_info.drop(columns="comment", errors="ignore")
     return True, "", "🔁 Recommandation", True, no_update, 'dropdown-reco-games', 'button-reco-games', no_update
 
 
@@ -419,6 +416,9 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     green = (255 * ratings).astype(int)
     blue = np.zeros_like(red)
 
+    if (user_index == special_index) and ("comment" not in games_info.columns):
+        games_info = games_info.merge(special_user_comments, on="game index")
+
     # Reassign colors
     colors = np.stack([red, green, blue], axis=1).tolist()
     games_info["color"] = colors
@@ -439,14 +439,23 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     points = games_info[games_info["game index"].isin(plotted_games_index)]
 
     view = recalc_view(points, games_info, initial_view_state)
+
     new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
 
-    common = new_deck.to_json(), {
-        "html": "<b>Note du jeu:</b> {name}"}, user_index, False, 'dropdown-reco-games', 'button-reco-games'
+    common = user_index, False, 'dropdown-reco-games', 'button-reco-games'
 
-    if user_index == special_index and n_intervals == 0:  # fireworks only on 1st clickon special user
-        return *common,  fw_shown, False
-    return *common, fw_hidden, True
+    if user_index == special_index:  # fireworks only on 1st clickon special user
+        tooltip = {
+            "html": "<b>Note du jeu:</b> {name}<br/>{comment}",
+            "style": {
+                "padding": "10px",
+                "maxWidth": "300px"
+            }}
+        if n_intervals == 0:
+            return new_deck.to_json(), tooltip, *common,  fw_shown, False
+        return new_deck.to_json(), tooltip, *common, fw_hidden, True
+
+    return new_deck.to_json(), {"html": "<b>Note du jeu:</b> {name}"}, *common, fw_hidden, True
 
 
 @app.callback(
