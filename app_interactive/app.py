@@ -40,7 +40,6 @@ def compute_point_size(n_points, min_points=150, max_points=600, min_size=2.5, m
 
     # Scale to point size range
     size = min_size + norm * (max_size - min_size)
-    print(f"Point size for {n_points} points", size)
     return size
 
 
@@ -88,13 +87,15 @@ nmf_pred = np.load("nnmf_prediction.npy", mmap_mode="r")
 # users_info = pd.read_parquet("users_info.parquet")  # info on users
 users_info = pd.read_json("users_info.json", orient="records")
 games_info = pd.read_json("games_info.json", orient="records")
+summaries = pd.read_json("summaries.json", orient="records")
 
 special_user_comments = pd.read_json("special_user_comments.json", orient="records")
+summaries_games_indices = [405, 503, 689, 985, 1380]
 
 # For themes-dropdown
 themes = {
     "Tous les clusters": [],
-    "🧩🕵️ Logique et Déduction": [22, 23],
+    "🧩🕵️ Logique & Déduction": [22, 23],
     "🏗️🏰 Construction & expansion": [0, 19],
     "🧠⚡ Rapide & Tactique": [14, 20],
     "📚⏳ Longs & complexes": [2, 9, 13, 25, 29],
@@ -216,7 +217,6 @@ def thematic_clusters(value, explore_mode, curr_user_index):
         return (no_update,) * 4
 
     current_cluster = -1
-    print(value)
 
     if value == "Tous les clusters":
         points = games_info
@@ -237,7 +237,6 @@ def thematic_clusters(value, explore_mode, curr_user_index):
 
         # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
         #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=1.5)
-    print(points["name"])
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return new_deck.to_json(), points["game index"].values, current_cluster, value
 
@@ -281,6 +280,7 @@ def zoom_cluster(clickInfo, current_cluster, explore_mode, curr_user_index):
 @app.callback(
     Output("game-info-div", "children"),
     Output("game-info-div", "style"),
+
     Input('tsne', 'clickInfo'),
     prevent_initial_call=True
 )
@@ -294,26 +294,30 @@ def display_game_info(click_info):
 
     game_info = click_info["object"]
 
-    return [html.Div([html.H4(html.B(game_info["game name year"]), style={"margin-bottom": "20px", "width": "80%"}),
-                      html.H3([f"{game_info['rating']:.1f}", " ⭐"], style={"width": "20%", "textAlign": "right"})],
-                     style={"display": "flex", "justifyContent": "spaceBetween"}),
-            html.P(html.P([html.B("🎲 Type: "), game_info['type']])),
-            html.Div([html.P([html.B("👨‍👩‍👧‍👦 Joueurs: "), game_info['players']]),
-                      html.P([html.B("🎂 Age: "), game_info['age']])],
+    children = [html.Div([html.H4(html.B(game_info["game name year"]), style={"margin-bottom": "20px", "width": "80%"}),
+                          html.H3([f"{game_info['rating']:.1f}", " ⭐"], style={"width": "20%", "textAlign": "right"})],
+                         style={"display": "flex", "justifyContent": "spaceBetween"}),
+                html.P(html.P([html.B("🎲 Type: "), game_info['type']])),
+                html.Div([html.P([html.B("👨‍👩‍👧‍👦 Joueurs: "), game_info['players']]),
+                          html.P([html.B("🎂 Age: "), game_info['age']])],
 
 
-                     style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "width": "100%"}),
-            html.P("TO DO: Comment summary here", style={"textAlign": "justify"})], {
-                "display": "block",
-                "width": "auto",
-                "color": "#14213d",
-                "backgroundColor": "#ffffff",
-                "padding": "20px",
-                "margin-left": "20px",
-                "margin-right": "20px",
-                "borderRadius": "15px",
+                         style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "width": "100%"})]
 
-    }
+    if game_info["game index"] in summaries_games_indices:
+        summary = summaries.loc[summaries["game index"] == game_info["game index"], "summary"].item()
+        print(summary)
+        children.append(html.P([html.B("Résumé des commentaires :\n"), summary],
+                        style={"textAlign": "justify", "whiteSpace": "pre-line"}))
+
+    return children, {"display": "block",
+                      "width": "auto",
+                      "color": "#14213d",
+                      "backgroundColor": "#ffffff",
+                      "padding": "20px",
+                      "margin-left": "20px",
+                      "margin-right": "20px",
+                      "borderRadius": "15px"}
 
 
 @app.callback(
@@ -370,6 +374,7 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
     Output('button-reco-games', 'className'),
     Output('fireworks', 'options', allow_duplicate=True),
     Output('delete-animation', 'disabled', allow_duplicate=True),
+    Output('button-reco-games', 'n_clicks'),
 
     Input("users-dropdown", "value"),
     State("plotted-data", "data"),
@@ -402,7 +407,7 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
         view = recalc_view(points, games_info, initial_view_state)
 
         new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
-        return new_deck.to_json(), {"text": "{name}"}, "", True, 'dropdown-reco-games', 'button-reco-games', fw_hidden, True
+        return new_deck.to_json(), {"text": "{name}"}, "", True, 'dropdown-reco-games', 'button-reco-games', fw_hidden, True, no_update
 
     # No user change -> the event is not fired
 
@@ -442,7 +447,7 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
 
     new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
 
-    common = user_index, False, 'dropdown-reco-games', 'button-reco-games'
+    common = user_index, False, 'dropdown-reco-games', 'button-reco-games open'
 
     if user_index == special_index:  # fireworks only on 1st clickon special user
         tooltip = {
@@ -452,10 +457,10 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
                 "maxWidth": "300px"
             }}
         if n_intervals == 0:
-            return new_deck.to_json(), tooltip, *common,  fw_shown, False
-        return new_deck.to_json(), tooltip, *common, fw_hidden, True
+            return new_deck.to_json(), tooltip, *common,  fw_shown, False, 0
+        return new_deck.to_json(), tooltip, *common, fw_hidden, True, 0
 
-    return new_deck.to_json(), {"html": "<b>Note du jeu:</b> {name}"}, *common, fw_hidden, True
+    return new_deck.to_json(), {"html": "<b>Note du jeu:</b> {name}"}, *common, fw_hidden, True, 0
 
 
 @app.callback(
@@ -526,6 +531,7 @@ def _get_reco_game_div(game, rating):
     Output('current-cluster', 'data', allow_duplicate=True),
     Output('tsne', 'data', allow_duplicate=True),
     Output('plotted-data', 'data'),
+    Output('cluster-theme-header', 'children', allow_duplicate=True),
 
     Input({'type': 'reco-game', 'index': ALL}, 'n_clicks'),
     State('plotted-data', 'data'),
@@ -536,22 +542,19 @@ def go_to_point(n_clicks, plotted_games_index, current_cluster):
 
     # Prevent initial update
     if not any(n > 0 for n in n_clicks) or ctx.triggered_id is None:
-        return (no_update,) * 3
+        return (no_update,) * 4
 
     game_info = games_info[games_info["game index"] == ctx.triggered_id["index"]].iloc[0]
     selected_cluster = game_info["cluster"].item()
 
     if selected_cluster == current_cluster:
-        return (no_update,) * 3
+        return (no_update,) * 4
 
     points = games_info[games_info["cluster"] == selected_cluster]
     view_state = recalc_view(points, games_info, initial_view_state)
-    # lat, lon, target = get_view_params(points)
-    # view_state = pdk.ViewState(latitude=lat, longitude=lon, target=target,
-    #                            controller=True, rotation_x=0, rotation_orbit=0, zoom=4)
 
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
-    return selected_cluster, new_deck.to_json(), points["game index"].to_list()
+    return selected_cluster, new_deck.to_json(), points["game index"].to_list(), themes_inverse[selected_cluster]
 
 
 @app.callback(
@@ -561,7 +564,6 @@ def go_to_point(n_clicks, plotted_games_index, current_cluster):
     prevent_initial_call=True
 )
 def delete_animation(n_intervals):
-    print("delete", n_intervals)
     return True, fw_hidden
 
 
