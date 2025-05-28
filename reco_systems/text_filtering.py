@@ -3,9 +3,7 @@ import string
 import pandas as pd
 import numpy as np
 from nltk.corpus import stopwords
-#from nltk.stem import PorterStemmer, WordNetLemmatizer
 import string
-#from treetaggerwrapper import TreeTagger
 from unidecode import unidecode
 
 #from autocorrect import Speller
@@ -28,8 +26,6 @@ def words_freq(data) -> pd.DataFrame:
     nb_comments = data["Comment line"].nunique()
     df['Freq'] = df['Freq'].apply(lambda val: val/nb_comments)
 
-    # Garder uniquement les lemmas qui appraissent dans le corpus
-    #return df[df['Lemma'].isin(corpus)]
     return df
 
 def construction_corpus(lemmas:pd.DataFrame, taille: int) -> dict:
