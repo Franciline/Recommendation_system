@@ -9,6 +9,9 @@ from nltk.collocations import BigramCollocationFinder, BigramAssocMeasures
 from reco_systems.user_game_matrix import *
 from reco_systems.CF_knn import *
 from reco_systems.evaluation import *
+from rouge import Rouge
+from sacrebleu import BLEU
+from nltk import bigrams
 
 
 # Counting freq, for bleu rouge
@@ -175,6 +178,42 @@ def f_all_comment(comment_grp, vectors, threshold, bigrams_ens):
     return document   
 
 
+def f_all_comment_unig(comment_grp, vectors, threshold, unig_ens, topx=None): 
+    """Filters every comments given a tf idf threshold. Returns an array containing all the filtered comments"""
+    # filter topx too
+    document = np.array([])
+    for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+        g = lem.split()
+
+        values = vectors[index].data  # Non-zero values in the sparse matrix
+        mask = values >= threshold
+        values = values[mask]
+        indices = vectors[index].indices[mask]
+
+        keep_unig = unig_ens[indices[np.argsort(values)[::-1]]]
+        kept = np.array([unig for unig in g if unig in keep_unig])
+
+        # topx
+        df_kept = pd.DataFrame(Counter(kept).items(), columns=['Unigram', 'Freq']).sort_values(by='Freq', ascending=False)
+        kept = df_kept.head(topx)['Unigram'].unique()
+        
+        if kept.size != 0:
+            document = np.concatenate((document,kept), axis = 0)
+    
+    return " ".join(document)   
+
+def f_all_comment_llm(comment_grp, vectors, threshold, bigrams_ens): 
+    """Filters every comments given a tf idf threshold. Returns an array containing all the filtered comments"""
+
+    document = np.array([])
+    for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
+        coms_bigrams = [" ".join(b) for b in bigrams(lem.split())]
+        if len(coms_bigrams) != 0:
+            document = np.concatenate((document,coms_bigrams), axis = 0)
+    
+    return document   
+
+
 # 
 # ------------------------------------------------------------------------------------ prediction with type of users
 # 
@@ -236,237 +275,6 @@ def _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings, mask_ratings, c
 
     return sim_users_neg, sim_users_pos, user_neg, user_pos
 
-""" Plot bigrams intersection """
-
-def _plot_barplots(sim_users_neg, sim_users_pos, user_neg, user_pos, user_id): # user_id
-        """Plot the intersection of bigrams for a user and its neighbors"""
-        _, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
-        # Negatives comments
-        bigrams_neg = create_df(BigramCollocationFinder.from_documents(sim_users_neg["Lemma"].str.split().tolist()),
-                                BigramAssocMeasures.raw_freq)
-
-        bigrams_neg_user = create_df(BigramCollocationFinder.from_documents(user_neg["Lemma"].str.split().tolist()),
-                                BigramAssocMeasures.raw_freq)
-        
-        bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
-
-        # Find intersection
-        bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
-        bigrams_neg_user = bigrams_neg_user[bigrams_neg_user["Lemma"].isin(bigrams_neg["Lemma"])]
-
-        # Positive comments
-        bigrams_pos = create_df(BigramCollocationFinder.from_documents(sim_users_pos["Lemma"].str.split().tolist()),
-                                BigramAssocMeasures.raw_freq)
-
-        bigrams_pos_user = create_df( BigramCollocationFinder.from_documents(user_pos["Lemma"].str.split().tolist()),
-                                BigramAssocMeasures.raw_freq)
-        
-        # Find intersection
-        bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
-        bigrams_pos_user = bigrams_pos_user[bigrams_pos_user["Lemma"].isin(bigrams_pos["Lemma"])]
-
-
-        sns.barplot(data=bigrams_neg.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax1)
-        sns.barplot(data=bigrams_pos.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax2)
-
-        sns.barplot(data=bigrams_neg_user.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax1, color="r", alpha=0.5)
-        sns.barplot(data=bigrams_pos_user.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax2, color="r", alpha=0.5)
-
-        ax1.set_title(f"Negative bigrams for user {user_id} (id)")
-        ax2.set_title(f"Positive bigrams for user {user_id} (id)")
-        ax1.tick_params(axis='y', labelsize=8)
-        ax2.tick_params(axis='y', labelsize=8)
-
-        plt.tight_layout()
-        return ax1, ax2
-
-# type : simi, less_simi, random
-def knn_comments(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type='simi', k=40):
-    """For a user id, predict games based on type of neighbors, and plot the intersection of bigrams"""
-    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
-                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-    _plot_barplots(sim_users_neg, sim_users_pos, user_neg, user_pos, user_id)
-
-""" Plot bigrams intersection with TF-IDF filtering"""
-
-def _plot_barplots_tfidf(sim_users_neg, sim_users_pos, user_neg, user_pos, user_id, threshold, vectors, bigrams_ens): # user id 
-        """Plot the intersection of bigrams for a user and its neighbors, with filtered comments by tf-idf"""
-        _, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
-
-        def f_all_comment(comment_grp): # filters the bigrams of comment using tf idf
-            document = np.array([])
-
-            for index, lem in zip(comment_grp['index'], comment_grp['Lemma']): 
-                g = BigramCollocationFinder.from_words(lem.split()).score_ngrams(BigramAssocMeasures.raw_freq)
-                values = vectors[index].data  # Non-zero values in the sparse matrix
-                mask = values >= threshold
-                values = values[mask]
-                indices = vectors[index].indices[mask]
-                keep_bigrams = bigrams_ens[indices[np.argsort(values)[::-1]]]
-                kept = np.array([" ".join(bigram) for bigram, _ in g if " ".join(bigram) in keep_bigrams])
-                if kept.size != 0:
-                    document = np.concatenate((document,kept), axis = 0)
-            return document        
-        
-        def filtered_big_df(df): # construct frequency lemma df
-            bigrams_comments = df.groupby('User id').apply(f_all_comment,include_groups=False).reset_index(drop=True).values
-            if bigrams_comments.size != 0:
-                bigrams_comments = np.hstack(bigrams_comments)
-            val, count = np.unique(bigrams_comments, return_counts=True)
-            count = count/len(bigrams_comments)
-            return pd.DataFrame({"Lemma": val, 'Freq': count})
-        
-        # Negatives comments
-        bigrams_neg = filtered_big_df(sim_users_neg)        
-        bigrams_neg_user = filtered_big_df(user_neg)
-
-        # Find intersection
-        bigrams_neg = bigrams_neg[bigrams_neg["Lemma"].isin(bigrams_neg_user["Lemma"])]
-        bigrams_neg_user = bigrams_neg_user[bigrams_neg_user["Lemma"].isin(bigrams_neg["Lemma"])]
-
-        # # Positive comments
-        bigrams_pos = filtered_big_df(sim_users_pos)
-        bigrams_pos_user = filtered_big_df(user_pos)
-        
-        # Find intersection
-        bigrams_pos = bigrams_pos[bigrams_pos["Lemma"].isin(bigrams_pos_user["Lemma"])]
-        bigrams_pos_user = bigrams_pos_user[bigrams_pos_user["Lemma"].isin(bigrams_pos["Lemma"])]
-
-        sns.barplot(data=bigrams_neg.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax1)
-        sns.barplot(data=bigrams_pos.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax2)
-
-        sns.barplot(data=bigrams_neg_user.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax1, color="r", alpha=0.5)
-        sns.barplot(data=bigrams_pos_user.sort_values(by="Freq", ascending=False).head(40), y="Lemma", x="Freq", ax=ax2, color="r", alpha=0.5)
-
-        ax1.set_title(f"Negative bigrams for user {user_id} (id)")
-        ax2.set_title(f"Positive bigrams for user {user_id} (id)")
-        ax1.tick_params(axis='y', labelsize=8)
-        ax2.tick_params(axis='y', labelsize=8)
-
-        plt.tight_layout()
-        return ax1, ax2
-
-# type: random, simi, less_simi
-def knn_comments_tfidf_plot(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40):  
-    """For a user id, predict games based on type of neighbors, and plot the intersection of bigrams of tf-idf filtered comments"""  
-    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
-                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-    _plot_barplots_tfidf(sim_users_neg, sim_users_pos, user_neg, user_pos, user_id, threshold, vectors, bigrams_ens)
-
-
-# ------------------------------------------------------------------------------------  prediction with type of users, avg game TOPX functions 
- 
-def _knn_sim_neg_pos_cas2(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type="simi", k=40):
-    user_ind = users_table[users_table == user_id].index[0]
-    games_to_hide = np.random.choice(games_to_consider, size=200, replace=False)
-
-    hidden_games = np.intersect1d(games_table[games_table.isin(games_to_hide)].index, mask_ratings[user_ind, :].nonzero()[0])
-
-    prev_ratings, prev_mask_ratings = matrix_ratings[user_ind, :], mask_ratings[user_ind, :], 
-    prev_sim = cos_sim_matrix[user_ind, :]
-
-    # hide games
-    matrix_ratings[user_ind, hidden_games] = 0
-    mask_ratings[user_ind, hidden_games] = 0
-
-    recalc_cos_similarity(user_ind, matrix_ratings, cos_sim_matrix)
-
-    # prediction with knn   
-    knn_all_user = get_KNN(cos_sim_matrix, users_table.shape[0], user_ind)
- 
-    # choice of similar users
-    match type:
-        case 'simi':
-            sim_users = knn_all_user[:k]
-        case 'less_simi':
-            sim_users = knn_all_user[-k:]
-        case 'random':
-            sim_users = np.random.choice(knn_all_user, size=k, replace=False)
-
-
-    pred_ratings, mask_pred_ratings = predict_ratings_baseline(matrix_ratings, mask_ratings,
-                                                                sim_users, cos_sim_matrix, user_ind)
-    
-    # restore
-    matrix_ratings[user_ind, :], mask_ratings[user_ind, :] = prev_ratings, prev_mask_ratings
-    cos_sim_matrix[user_ind, :], cos_sim_matrix[:, user_ind] = prev_sim, prev_sim
-
-    diff = np.abs(matrix_ratings[user_ind, hidden_games] - pred_ratings[hidden_games])
-
-    ALLOW_ERR = 2
-    user_mean = users_mean.loc[users_mean["User id"] == user_id, "Rating"].item()
-    neg, pos = pred_ratings[hidden_games] < user_mean, pred_ratings[hidden_games] > user_mean
-
-    neg_pred_games = hidden_games[np.argwhere(neg & (diff < ALLOW_ERR)).flatten()]
-    pos_pred_games = hidden_games[np.argwhere(pos & (diff < ALLOW_ERR)).flatten()]
-
-    # Find games ids
-    neg_pred_games = games_table[games_table.index.isin(neg_pred_games)].values
-    pos_pred_games =  games_table[games_table.index.isin(pos_pred_games)].values
-
-    # Find users ids
-    sim_users = users_table[users_table.index.isin(sim_users)].values
-    sim_users_neg = comments_all[comments_all["Game id"].isin(neg_pred_games) & comments_all["User id"].isin(sim_users)]
-    sim_users_pos = comments_all[comments_all["Game id"].isin(pos_pred_games) & comments_all["User id"].isin(sim_users)]
-
-    user_neg = comments_all[(comments_all["Game id"].isin(neg_pred_games)) & (comments_all["User id"] == user_id)]
-    user_pos = comments_all[(comments_all["Game id"].isin(pos_pred_games)) & (comments_all["User id"] == user_id)]
-
-    return sim_users_neg, sim_users_pos, user_neg, user_pos
-
-""" Count the number of bigrams in the intersection, avg per game, no set"""
-# using tf idf filtering, count number of intersection in neg and pos
-def _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx): # user id      
-        
-    def one_game_score(user_com, sim_users_com): # NO SET
-        # for one game, list of score for all comment with user
-        # user_com one row
-    
-        user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
-        document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
-
-        # clipping
-        df_user_big = pd.DataFrame(Counter(user_big).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
-        df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
-
-        if topx:
-            df_document = df_document.head(topx) 
-
-        intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
-        intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
-        
-        return np.sum(intersection['Freq_inter'])/len(sim_users_com) if len(sim_users_com) else 0
-              
-
-        # ---------------------
-
-    neg, pos = [], []
-    neg_game = user_neg["Game id"].unique()
-    pos_game = user_pos["Game id"].unique()
-
-    for game_id in neg_game:
-        com_user = user_neg[user_neg['Game id'] == game_id]
-        coms_neigh = sim_users_neg[sim_users_neg['Game id'] == game_id]
-        
-        neg.append(0) if coms_neigh.empty else neg.append(one_game_score(com_user, coms_neigh))
-        
-    for game_id in pos_game:
-        com_user = user_pos[user_pos['Game id'] == game_id]
-        coms_neigh = sim_users_pos[sim_users_pos['Game id'] == game_id]
-
-        pos.append(0) if coms_neigh.empty else pos.append(one_game_score(com_user, coms_neigh))
-
-    return np.mean(pos) if pos else 0, np.mean(neg) if neg else 0
-
-# type: random, simi, less_simi
-def knn_comments_count_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
-    # CAS 2
-    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos_cas2(user_id, games_to_consider, matrix_ratings,
-                                                                                mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
-   
-    pos_count, neg_count = _count_intersect_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
-
-    return pos_count, neg_count
 
 # ------------------------------------------------- 
 
@@ -518,7 +326,7 @@ def _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, thre
 def knn_comments_ROUGE_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
     """Calculate the recall (intersection / nb bigrams in the reference) with reference being the user's comments, and the prediction the neighbors' comments """ 
    
-    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos_cas2(user_id, games_to_consider, matrix_ratings,
+    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                                 mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
     pos_prop, neg_prop = _intersection_ROUGE_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
     return pos_prop, neg_prop
@@ -573,8 +381,391 @@ def _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, 
 def knn_comments_BLEU_v(user_id, games_to_consider, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, vectors, bigrams_ens, type = 'simi', threshold = 0, k = 40, topx = None):    
     """Calculate the precision (intersection / nb bigrams in the prediction) with reference being the user's comments, and the prediction the neighbors' comments """ 
 
-    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos_cas2(user_id, games_to_consider, matrix_ratings,
+    sim_users_neg, sim_users_pos, user_neg, user_pos = _knn_sim_neg_pos(user_id, games_to_consider, matrix_ratings,
                                                                         mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, users_mean, type, k)
     
     score_pos, score_neg = _calc_intersection_BLEU_v(sim_users_neg, sim_users_pos, user_neg, user_pos, threshold, vectors, bigrams_ens, topx)
     return score_pos, score_neg
+
+
+# -----------------------------------------------
+# Code for final evaluation versions
+# 
+
+
+# on all coms
+def _knn_sim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, k=40):
+    """Returns the ids of well predicted games and the sorted knn on all users"""
+    user_ind = users_table[users_table == user_id].index[0]
+
+    # previous 
+    prev_ratings, prev_mask_ratings = matrix_ratings[user_ind, :], mask_ratings[user_ind, :], 
+    prev_sim = cos_sim_matrix[user_ind, :]
+
+    hidden_games = hide_ratings(matrix_ratings, mask_ratings, user_ind, 0.1) # hide 10 percent of user's game
+    recalc_cos_similarity(user_ind, matrix_ratings, cos_sim_matrix)
+
+    # choice of similar users
+    knn_all_user = get_KNN(cos_sim_matrix, users_table.shape[0], user_ind)
+
+    # prediction
+    pred_ratings, mask_pred_ratings = predict_ratings_baseline(matrix_ratings, mask_ratings,
+                                                                knn_all_user[:k], cos_sim_matrix, user_ind)
+    hidden_games = np.intersect1d(hidden_games, mask_pred_ratings)
+
+    # restore
+    matrix_ratings[user_ind, :], mask_ratings[user_ind, :] = prev_ratings, prev_mask_ratings
+    cos_sim_matrix[user_ind, :], cos_sim_matrix[:, user_ind] = prev_sim, prev_sim
+
+    # well predicted games
+    ALLOW_ERR = 2
+    diff = np.abs(matrix_ratings[user_ind, hidden_games] - pred_ratings[hidden_games])
+    
+    # for all games
+    well_predicted_games = hidden_games[np.argwhere(diff < ALLOW_ERR).flatten()] 
+    well_predicted_games = games_table[games_table.index.isin(well_predicted_games)].values
+
+    return well_predicted_games, users_table.loc[knn_all_user].values #true ids of knn
+
+def _intersection_ROUGE(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, k, topx): 
+        
+        def one_game_score(user_com, sim_users_com): # NO , bigrams
+            # user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
+            document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
+            
+            # clipping
+            df_user_big = pd.DataFrame(Counter(user_com).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = df_document.head(topx) 
+            # print(df_document)
+
+            intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
+            intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+          
+            return np.sum(intersection['Freq_inter'])/np.sum(df_user_big['Freq']) *100
+        
+        def inter(neig, user):
+            df_user = pd.DataFrame(Counter(user.split()).items(), columns=['Uni', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_neig = pd.DataFrame(Counter(neig.split()).items(), columns=['Uni', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_neig = df_neig.head(topx)
+            # print("taille", len(df_neig))
+
+            intersection = df_neig.merge(df_user, on='Uni', suffixes=('_neigh', '_user'))
+            intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+
+            # print("intersection!!!")
+            # print(intersection['Uni'].unique())
+
+        # ---------------------
+        if len(well_predicted_games) == 0:
+            return None, None
+        
+        score_simi = np.array([0.,0.,0.])
+        score_rouge1 = np.array([0.,0.,0.])
+        r = Rouge()
+
+        for game_id in well_predicted_games: 
+            # print(game_id)
+            # users having rated the games
+            users_rated = comments_all[comments_all['Game id']==game_id]['User id'].values
+            index_uid = np.where(users_rated == user_id)[0][0]  # first occurrence
+            users_rated = np.delete(users_rated, index_uid)
+
+            user_real = comments_all[(comments_all['User id'] == user_id) & (comments_all['Game id'] == game_id)]['Comment'].values[0]
+            user_com = bigrams(user_real.split())
+            user_com = [" ".join(x) for x in user_com]
+            
+            # - similare 
+            m_users = np.intersect1d(knn_all_user[:k], users_rated)
+            m = len(m_users)
+
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_users)) & (comments_all['Game id'] == game_id)]
+            score_rouge1[0] += r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100
+            score_simi[0] += one_game_score(user_com, neigb_coms)
+            # print("inter simi")
+            # inter(" ".join(neigb_coms['Comment'].values),user_real)
+
+            # - random
+            m_random = np.random.choice(users_rated, m, replace=False)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_random)) & (comments_all['Game id'] == game_id)]
+            score_rouge1[1] += r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100
+            # print("user rand")
+            # inter(" ".join(neigb_coms['Comment'].values),user_real)
+            score_simi[1] += one_game_score(user_com, neigb_coms)
+
+            # - less similar
+            mask = np.isin(knn_all_user, users_rated)
+            m_far = knn_all_user[mask][-m:]
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_far)) & (comments_all['Game id'] == game_id)]
+            score_rouge1[2] += r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100
+            # print("user dist")
+            # inter(" ".join(neigb_coms['Comment'].values),user_real)
+            score_simi[2] += one_game_score(user_com, neigb_coms)
+
+        return score_simi/len(well_predicted_games), score_rouge1/len(well_predicted_games)
+                 
+# type: random, simi, less_simi
+def knn_ROUGE(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, vectors, bigrams_ens, threshold = 0, k = 40, topx = None):    
+    well_predicted_games, knn_all_user = _knn_sim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, k)
+
+    score, score_rouge = _intersection_ROUGE(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, k, topx)
+    return score, score_rouge
+
+# ---
+
+# for annexe, return score for each game
+def _intersection_ROUGE_annexe(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, topx, k): 
+    
+        def one_game_score(user_com, sim_users_com,  v = False, verb = False): # NO , bigrams
+            # user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
+           
+            document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
+
+            # clipping
+            df_user_big = pd.DataFrame(Counter(user_com).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = df_document.head(topx) 
+
+            intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
+            intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+            
+            return np.sum(intersection['Freq_inter'])/np.sum(df_user_big['Freq']) * 100 #len(user_com) if len(user_com) else 0
+                
+        # ---------------------
+        
+        if len(well_predicted_games) == 0:
+            return [[], [], []], [[], [], []]
+
+        score_simi = [[], [], []] # one user, all score for games with different type of users
+        score_rouge1 = [[], [], []]
+        r = Rouge()
+
+        for game_id in well_predicted_games: 
+            # print(game_id)
+            
+            # users having rated the games
+            users_rated = comments_all[comments_all['Game id']==game_id]['User id'].values
+            index_uid = np.where(users_rated == user_id)[0][0]  # first occurrence
+            users_rated = np.delete(users_rated, index_uid)
+
+            user_real = comments_all[(comments_all['User id'] == user_id) & (comments_all['Game id'] == game_id)]['Comment'].values[0]
+     
+            user_com = bigrams(comments_all[(comments_all['User id'] == user_id) & (comments_all['Game id'] == game_id)]['Comment'].values[0].split())
+            user_com = [" ".join(x) for x in user_com]
+
+            # - similare 
+            m_users = np.intersect1d(knn_all_user[:k], users_rated)
+            m = len(m_users)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_users)) & (comments_all['Game id'] == game_id)]
+            score_simi[0].append(one_game_score(user_com, neigb_coms))
+            score_rouge1[0].append(r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100)
+
+            # - random
+            m_random = np.random.choice(users_rated, min(len(users_rated), m), replace=False)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_random)) & (comments_all['Game id'] == game_id)]
+            score_simi[1].append(one_game_score(user_com, neigb_coms))
+            score_rouge1[1].append(r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100)
+
+            # - less similar
+            mask = np.isin(knn_all_user, users_rated)
+            m_far = knn_all_user[mask][-m:]
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_far)) & (comments_all['Game id'] == game_id)]
+            score_simi[2].append(one_game_score(user_com, neigb_coms))
+            score_rouge1[2].append(r.get_scores(" ".join(neigb_coms['Comment'].values), user_real)[0]['rouge-1']['r']*100)
+
+        return score_simi, score_rouge1
+
+# type: random, simi, less_simi
+def knn_ROUGE_annexe(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, vectors, bigrams_ens, threshold = 0, k = 40, topx = None):    
+    well_predicted_games, knn_all_user = _knn_sim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, k)
+    liste_score, liste_rouge1 = _intersection_ROUGE_annexe(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, topx, k)
+
+    return np.array(liste_score), np.array(liste_rouge1)
+
+# with rouge1 tf idf and top x
+# on all coms
+
+def _intersection_ROUGE12(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors_big, bigrams_ens, vector_unig, unig_ens, k, topx): 
+        
+        def one_game_score(user_com_big, sim_users_com): # NO, bigrams and unigrams
+            # user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
+            document = f_all_comment(sim_users_com, vectors_big, threshold, bigrams_ens) # neighbors comment filtered
+            
+            # clipping
+            df_user_big = pd.DataFrame(Counter(user_com_big).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = df_document.head(topx) 
+
+            intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
+            intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+
+            predicted = df_document['Bigrams'].unique()
+            return np.sum(intersection['Freq_inter'])/np.sum(df_user_big['Freq']), predicted
+                
+        # ---------------------
+        if len(well_predicted_games) == 0:
+            return None, None
+        
+        score_simi = np.array([0.,0.,0.])
+        score_rouge1 = np.array([0.,0.,0.])
+        r = Rouge()
+        maxs, maxr, maxls = -1,-1,-1
+        id_gr, id_gs, id_gls = None, None, None
+
+
+        for game_id in well_predicted_games: 
+            # users having rated the games
+            users_rated = comments_all[comments_all['Game id']==game_id]['User id'].values
+            index_uid = np.where(users_rated == user_id)[0][0]  # first occurrence
+            users_rated = np.delete(users_rated, index_uid)
+
+            user_real = comments_all[(comments_all['User id'] == user_id) & (comments_all['Game id'] == game_id)]['Lemma'].values[0]
+            user_com_unig = user_real.split()
+            user_com = bigrams(user_com_unig)
+            user_com = [" ".join(x) for x in user_com]
+            
+            # - similare 
+            m_users = np.intersect1d(knn_all_user[:k], users_rated)
+            m = len(m_users)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_users)) & (comments_all['Game id'] == game_id)]
+            r2 = one_game_score(user_com, neigb_coms) 
+            score_simi[0] += r2[0]* 100
+            # rouge 1 on filtered neighbors
+            s = r.get_scores(f_all_comment_unig(neigb_coms, vector_unig, threshold, unig_ens), user_real)[0]['rouge-1']['r']*100
+            score_rouge1[0] += s
+            if r2[0] > maxs : 
+                maxs = s
+                id_gs = (game_id, r2[1])
+
+            # - random
+            m_random = np.random.choice(users_rated, m, replace=False)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_random)) & (comments_all['Game id'] == game_id)]
+            s = r.get_scores(f_all_comment_unig(neigb_coms, vector_unig, threshold, unig_ens), user_real)[0]['rouge-1']['r']*100
+            score_rouge1[1] += s
+            r2 =  one_game_score(user_com, neigb_coms) 
+            score_simi[1] += r2[0]* 100
+            if r2[0] > maxr : 
+                maxr = s
+                id_gr = (game_id, r2[1])
+
+            # - less similar
+            mask = np.isin(knn_all_user, users_rated)
+            m_far = knn_all_user[mask][-m:]
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_far)) & (comments_all['Game id'] == game_id)]
+            s = r.get_scores(f_all_comment_unig(neigb_coms, vector_unig, threshold, unig_ens), user_real)[0]['rouge-1']['r']*100
+            score_rouge1[2] += s
+            
+
+            r2 = one_game_score(user_com, neigb_coms) 
+            score_simi[2] += r2[0]* 100
+
+            if r2[0] > maxls : 
+                maxls = s
+                id_gls = (game_id, r2[1])
+        
+        # print("max :", id_gs, maxs, id_gr, maxr, id_gls, maxls)
+        return score_simi/len(well_predicted_games), score_rouge1/len(well_predicted_games)
+                 
+# type: random, simi, less_simi
+def knn_ROUGE12(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, vectors, bigrams_ens, vector_unig, unig_ens, threshold = 0, k = 40, topx = None):    
+    well_predicted_games, knn_all_user = _knn_sim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, k)
+
+    score, score_rouge = _intersection_ROUGE12(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens,vector_unig, unig_ens, k, topx)
+    return score, score_rouge
+
+
+# FOR BLEU PLOT
+
+def _intersection_ROUGE_prim(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, k, topx): 
+        
+        def one_game_score(user_com, sim_users_com, v = False): # NO , bigrams
+            # user_big = f_all_comment(user_com, vectors, threshold, bigrams_ens)
+            document = f_all_comment(sim_users_com, vectors, threshold, bigrams_ens) # neighbors comment filtered
+            
+            # clipping
+            df_user_big = pd.DataFrame(Counter(user_com).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = pd.DataFrame(Counter(document).items(), columns=['Bigrams', 'Freq']).sort_values(by='Freq', ascending=False)
+            df_document = df_document.head(topx) 
+            # print(df_document)
+
+            intersection = df_document.merge(df_user_big, on='Bigrams', suffixes=('_neigh', '_user'))
+            intersection['Freq_inter'] = intersection[['Freq_neigh', 'Freq_user']].min(axis=1)
+          
+            if v:
+                print("doc")
+                print(df_document['Bigrams'].unique())
+                print(user_com)
+            return np.sum(intersection['Freq_inter'])/np.sum(df_user_big['Freq']) 
+        
+        def mean_bleu(bleu, neigb_coms, user_com):
+            # compute mean bleu score for users and neigh
+            score = 0
+            for hyp in neigb_coms:
+                score += bleu.sentence_score(hypothesis=hyp, references=[user_com]).score
+            return score/len(neigb_coms) if len(neigb_coms) else 0
+
+        # ---------------------
+        if len(well_predicted_games) == 0:
+            return None, None, None
+        
+        score_simi = np.array([0.,0.,0.])
+        score_rouge1 = np.array([0.,0.,0.])
+        score_bleu = np.array([0.,0.,0.])
+        v = False
+        r = Rouge()
+        bleu = BLEU(max_ngram_order=2,effective_order=True)
+
+        if user_id == 1193 or user_id == 1903:
+            v = True
+
+        for game_id in well_predicted_games: 
+            if v:
+                print(user_id, game_id)
+            # users having rated the games
+            users_rated = comments_all[comments_all['Game id']==game_id]['User id'].values
+            index_uid = np.where(users_rated == user_id)[0][0]  # first occurrence
+            users_rated = np.delete(users_rated, index_uid)
+
+            user_real = comments_all[(comments_all['User id'] == user_id) & (comments_all['Game id'] == game_id)]['Lemma'].values[0]
+            user_com = bigrams(user_real.split())
+            user_com = [" ".join(x) for x in user_com]
+            
+            # - similare 
+            m_users = np.intersect1d(knn_all_user[:k], users_rated)
+            m = len(m_users)
+
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_users)) & (comments_all['Game id'] == game_id)]
+            hyp = " ".join(neigb_coms['Lemma'].values)
+            score_rouge1[0] += r.get_scores(hyp, user_real)[0]['rouge-1']['r']*100
+            # score_bleu[0] += mean_bleu(bleu, neigb_coms['Lemma'].values, user_real)
+            score_bleu[0] += bleu.sentence_score(hyp, [user_real]).score
+            score_simi[0] += one_game_score(user_com, neigb_coms)*100
+
+            # - random
+            m_random = np.random.choice(users_rated, m, replace=False)
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_random)) & (comments_all['Game id'] == game_id)]
+            hyp = " ".join(neigb_coms['Lemma'].values)
+            score_rouge1[1] += r.get_scores(hyp, user_real)[0]['rouge-1']['r']*100
+            # score_bleu[1] += mean_bleu(bleu, neigb_coms['Lemma'].values, user_real)
+            score_bleu[1] += bleu.sentence_score(hyp, [user_real]).score
+            score_simi[1] += one_game_score(user_com, neigb_coms)*100
+
+            # - less similar
+            mask = np.isin(knn_all_user, users_rated)
+            m_far = knn_all_user[mask][-m:]
+            neigb_coms = comments_all[(comments_all['User id'].isin(m_far)) & (comments_all['Game id'] == game_id)]
+            hyp = " ".join(neigb_coms['Lemma'].values)
+            score_rouge1[2] += r.get_scores(hyp, user_real)[0]['rouge-1']['r']*100
+            # score_bleu[2] += mean_bleu(bleu, neigb_coms['Lemma'].values, user_real)
+            score_bleu[2] += bleu.sentence_score(hyp, [user_real]).score
+            score_simi[2] += one_game_score(user_com, neigb_coms)*100
+
+        return score_simi/len(well_predicted_games), score_rouge1/len(well_predicted_games), score_bleu/len(well_predicted_games)
+                 
+# type: random, simi, less_simi
+def knn_ROUGE_prim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, comments_all, vectors, bigrams_ens, threshold = 0, k = 40, topx = None):    
+    # no threshold no top x!! bleu score
+    well_predicted_games, knn_all_user = _knn_sim(user_id, matrix_ratings, mask_ratings, cos_sim_matrix, users_table, games_table, k)
+
+    score, score_rouge, score_bleu = _intersection_ROUGE_prim(user_id, well_predicted_games, comments_all, knn_all_user, threshold, vectors, bigrams_ens, k, topx)
+    return score, score_rouge, score_bleu
