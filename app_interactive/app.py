@@ -306,7 +306,6 @@ def display_game_info(click_info):
 
     if game_info["game index"] in summaries_games_indices:
         summary = summaries.loc[summaries["game index"] == game_info["game index"], "summary"].item()
-        print(summary)
         children.append(html.P([html.B("Résumé des commentaires :\n"), summary],
                         style={"textAlign": "justify", "whiteSpace": "pre-line"}))
 
