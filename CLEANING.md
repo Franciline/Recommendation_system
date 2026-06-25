@@ -71,7 +71,7 @@ Recommended final layout:
 - [v] Move `reco_systems/` into `src/boardgames_recsys/`.
   - Python imports were converted from `reco_systems.*` to `boardgames_recsys.*`.
   - A temporary compatibility shim keeps old notebooks runnable while notebook imports are migrated later.
-  - [ ] Convert notebook imports from `reco_systems.*` to `boardgames_recsys.*`.
+  - [v] Convert notebook imports from `reco_systems.*` to `boardgames_recsys.*`.
 - [v] Rename unclear modules while moving them.
   - `CF_knn.py` -> `models/collaborative_filtering.py`
   - `user_game_matrix.py` -> `data/matrix.py`
@@ -107,7 +107,7 @@ Recommended final layout:
   - evaluation notebooks -> `notebooks/04_evaluation/`
   - app data generation notebooks -> `notebooks/05_app_generation/`
 - [v] Rename notebooks with numeric prefixes and descriptive names, for example `04_nnmf_matrix_eval.ipynb`.
-- [ ] Strip notebook outputs before committing future changes.
+- [v] Strip notebook outputs before committing future changes.
   - Configure `nbstripout` or a pre-commit hook through `uv`.
 
 ### Data and artifact policy
@@ -126,7 +126,7 @@ Recommended final layout:
 
 - [v] Rewrite `README.md` around the cleaned structure.
   - Include project purpose, installation with `uv sync`, how to run the Dash app, how to reproduce key analyses, and where data must be placed.
-- [ ] Move long-form material to `docs/` if the README becomes too large.
+- [v] Move long-form material to `docs/` if the README becomes too large.
   - Suggested files: `docs/data.md`, `docs/app.md`, `docs/reproducibility.md`, `docs/modeling.md`.
 - [v] Update `AGENTS.md` after restructuring so contributor guidance matches the new layout and commands.
 
