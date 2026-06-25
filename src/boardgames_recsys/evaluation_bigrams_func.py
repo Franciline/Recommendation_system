@@ -6,9 +6,9 @@ import seaborn as sns
 from collections import Counter
 from nltk.collocations import BigramCollocationFinder, BigramAssocMeasures
 
-from reco_systems.user_game_matrix import *
-from reco_systems.CF_knn import *
-from reco_systems.evaluation import *
+from boardgames_recsys.user_game_matrix import *
+from boardgames_recsys.CF_knn import *
+from boardgames_recsys.evaluation import *
 from rouge import Rouge
 from sacrebleu import BLEU
 from nltk import bigrams

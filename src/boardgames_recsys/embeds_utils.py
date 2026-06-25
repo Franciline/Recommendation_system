@@ -1,9 +1,9 @@
 from sacrebleu import corpus_bleu
 from math import ceil
-from reco_systems.lemmatization import *
-from reco_systems.evaluation import *
-from reco_systems.CF_knn import *
-from reco_systems.text_filtering import *
+from boardgames_recsys.lemmatization import *
+from boardgames_recsys.evaluation import *
+from boardgames_recsys.CF_knn import *
+from boardgames_recsys.text_filtering import *
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 from sklearn.metrics.pairwise import euclidean_distances
