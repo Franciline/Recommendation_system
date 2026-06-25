@@ -1,16 +1,16 @@
-
-from nltk.corpus import stopwords
-import numpy as np
-from unidecode import unidecode
-import pandas as pd
 from string import punctuation
+
+import numpy as np
+import pandas as pd
 from nltk import word_tokenize
+from nltk.corpus import stopwords
 from treetaggerwrapper import TreeTagger
+from unidecode import unidecode
 
 
 def apply_words_limit(text: pd.Series, min_words_nb: int) -> pd.DataFrame:
     punc_to_delete = punctuation
-    punc_to_delete = punctuation.replace("\'", "")  # ' can have meaning
+    punc_to_delete = punctuation.replace("'", "")  # ' can have meaning
 
     # Translation table for punctuation removal
     trans_table = str.maketrans(punc_to_delete, " " * len(punc_to_delete))
@@ -27,8 +27,9 @@ def apply_words_limit(text: pd.Series, min_words_nb: int) -> pd.DataFrame:
     return text[text.index.isin(filtered_comments.index)]
 
 
-def lemmatize_comments(df: pd.DataFrame, min_words_nb: int, min_word_len: int, max_words_len: int,
-                       merge_type: str, treetagger_dir: str):
+def lemmatize_comments(
+    df: pd.DataFrame, min_words_nb: int, min_word_len: int, max_words_len: int, merge_type: str, treetagger_dir: str
+):
     """
 
     merge_type : "comments" or "games_desc"
@@ -36,8 +37,7 @@ def lemmatize_comments(df: pd.DataFrame, min_words_nb: int, min_word_len: int, m
 
     if merge_type == "comments":
         df = apply_words_limit(df, min_words_nb, "Comment body")
-        text = df[["Comment title", "Comment body"]].apply(
-            lambda x: " ".join(x.values.astype(str)), axis=1)
+        text = df[["Comment title", "Comment body"]].apply(lambda x: " ".join(x.values.astype(str)), axis=1)
 
         words, lemmas_df = _lemmatize(text, min_word_len, max_words_len, treetagger_dir)
         words = words.reset_index().rename(columns={"index": "Comment line"}).reset_index(drop=False)
@@ -76,7 +76,7 @@ def lemmatize_comments(df: pd.DataFrame, min_words_nb: int, min_word_len: int, m
 def _lemmatize(text: pd.Series, min_words_len, max_words_len, treetagger_dir) -> pd.DataFrame:
     # Define stopwords
     FR_stopwords = stopwords.words("french")
-    FR_stopwords += ['donc', 'alors', 'que', 'qui', 'car', 'parce', 'ca']
+    FR_stopwords += ["donc", "alors", "que", "qui", "car", "parce", "ca"]
     FR_stopwords.remove("ne")
     FR_stopwords.remove("pas")
     print(text)
@@ -117,7 +117,7 @@ def _lemmatize(text: pd.Series, min_words_len, max_words_len, treetagger_dir) ->
     lemmas_df = pd.DataFrame(data={"Lemma": tagger.tag_text(all_words)})
 
     # Split return value of TreeTagger into Token (word) | Part of Speech | Lemma
-    lemmas_df = lemmas_df["Lemma"].str.split('\t', expand=True).set_axis(["Tokens", "POS", "Lemma"], axis=1)
+    lemmas_df = lemmas_df["Lemma"].str.split("\t", expand=True).set_axis(["Tokens", "POS", "Lemma"], axis=1)
 
     # Change 'ne' and 'pas' part of speech
     lemmas_df.loc[lemmas_df["Lemma"].isin(["ne", "pas"]), "POS"] = "NEG"
@@ -145,12 +145,12 @@ def _join_reviews(words: pd.DataFrame, lemmas_df: pd.DataFrame) -> pd.DataFrame:
 
 def simplify_VER_POS(words_lemmatized: pd.DataFrame) -> pd.DataFrame:
     # Verbs endings (infitives)
-    regex = r'.*(er|ir|re|oir|dre|ire|aitre|oudre|uire|tir)$'
+    regex = r".*(er|ir|re|oir|dre|ire|aitre|oudre|uire|tir)$"
 
     # Verbes in infitive forms
     verbes = words_lemmatized["POS"].str.contains("VER:")
     mask = words_lemmatized[(~verbes) | ((verbes) & (words_lemmatized["Lemma"].str.match(regex)))]
-    mask.loc[:, "POS"] = mask["POS"].str.replace(r'VER:.*', 'VER', regex=True)
+    mask.loc[:, "POS"] = mask["POS"].str.replace(r"VER:.*", "VER", regex=True)
     return mask
 
 
@@ -162,7 +162,7 @@ def lemmatize_comment(phrases: pd.DataFrame, tagdir: str, lemmas: pd.DataFrame):
 
     # Remove punctuation
     FR_stopwords = stopwords.words("french")
-    FR_stopwords += ['donc', 'alors', 'que', 'qui', 'car', 'parce', 'ca']
+    FR_stopwords += ["donc", "alors", "que", "qui", "car", "parce", "ca"]
     FR_stopwords.remove("ne")
     FR_stopwords.remove("pas")
 
@@ -204,7 +204,7 @@ def lemmatize_comment(phrases: pd.DataFrame, tagdir: str, lemmas: pd.DataFrame):
     lemmas_df = pd.DataFrame(data={"Lemma": tagger.tag_text(all_words)})
 
     # Split return value of TreeTagger into Token (word) | Part of Speech | Lemma
-    lemmas_df = lemmas_df["Lemma"].str.split('\t', expand=True).set_axis(["Tokens", "POS", "Lemma"], axis=1)
+    lemmas_df = lemmas_df["Lemma"].str.split("\t", expand=True).set_axis(["Tokens", "POS", "Lemma"], axis=1)
 
     # Change 'ne' and 'pas' part of speech
     lemmas_df.loc[lemmas_df["Lemma"].isin(["ne", "pas"]), "POS"] = "NEG"
@@ -214,4 +214,9 @@ def lemmatize_comment(phrases: pd.DataFrame, tagdir: str, lemmas: pd.DataFrame):
 
     # Select lemmas in corpus
     lemmas_df = lemmas_df[lemmas_df["Lemma"].isin(lemmas["Lemma"])]
-    return lemmas_df.merge(words, on="Tokens").sort_values(["Phrase line", "index"]).groupby("Phrase line")["Lemma"].apply(" ".join)
+    return (
+        lemmas_df.merge(words, on="Tokens")
+        .sort_values(["Phrase line", "index"])
+        .groupby("Phrase line")["Lemma"]
+        .apply(" ".join)
+    )

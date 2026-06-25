@@ -37,8 +37,7 @@ def construction_corpus(lemmas: pd.DataFrame, taille: int) -> dict:
                 "autre",
                 "seul",
                 "tendre",
-                "fin"
-                "super",
+                "finsuper",
                 "superbe",
                 "juste",
                 "jouable",

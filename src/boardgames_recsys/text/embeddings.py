@@ -1,17 +1,16 @@
-from sacrebleu import corpus_bleu
 from math import ceil
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from sacrebleu import BLEU
+from scipy.stats import entropy
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import euclidean_distances
+
 from boardgames_recsys.evaluation.ratings import hide_ratings, recalc_cos_similarity
 from boardgames_recsys.models.collaborative_filtering import get_KNN, predict_ratings_baseline
 from boardgames_recsys.text.lemmatization import lemmatize_comment
-from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-
-from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.feature_extraction.text import CountVectorizer
-from scipy.stats import entropy
-import pandas as pd
-import numpy as np
-import seaborn as sns
-from sacrebleu import BLEU
 
 ALLOW_ERR = 2  # max error of ratings prediction for comments generation
 
@@ -28,7 +27,9 @@ def cluster_weight_count(comments_clusters):
     return weight
 
 
-def hide_comments(target_user_id, games_table, hidden_games_ind, comments_clusters, clusters_weights, weight_type="count"):
+def hide_comments(
+    target_user_id, games_table, hidden_games_ind, comments_clusters, clusters_weights, weight_type="count"
+):
     """Hide comments (phrases) given by target user id on hidden games. Also updates weights."""
     games_ids = games_table[games_table["Game index"].isin(hidden_games_ind)]["Game id"].values
 
@@ -36,13 +37,14 @@ def hide_comments(target_user_id, games_table, hidden_games_ind, comments_cluste
     mask_drop = (cc["User id"] == target_user_id) & (cc["Game id"].isin(games_ids))
 
     if weight_type == "count":
-        weight_user = (cc.loc[mask_drop].groupby("Cluster", sort=False)["Phrases"].size())
+        weight_user = cc.loc[mask_drop].groupby("Cluster", sort=False)["Phrases"].size()
         cw.loc[:, "Weight"] = cw["Weight"].sub(weight_user, fill_value=0)
 
     if weight_type == "entropy":
         clusters = comments_clusters.loc[mask_drop, "Cluster"]
-        new_weights = cluster_weight_entropy(
-            comments_clusters[comments_clusters["Cluster"].isin(clusters)]).set_index("Cluster")
+        new_weights = cluster_weight_entropy(comments_clusters[comments_clusters["Cluster"].isin(clusters)]).set_index(
+            "Cluster"
+        )
         cw.update({"Weight": new_weights["Weight"]})
     return cc.loc[~mask_drop].sort_values("Cluster", ignore_index=True), cw.reset_index()
 
@@ -89,11 +91,22 @@ def get_sim_per_game(game_ind, sim_users, mask_ratings):
     return int(mask_ratings[sim_users, game_ind].sum())
 
 
-def choose_users(target_user_ind, sim_users, n, users_type, game_ind, game_id, mask_ratings, dist_to_users, comments_clusters, users_table):
+def choose_users(
+    target_user_ind,
+    sim_users,
+    n,
+    users_type,
+    game_ind,
+    game_id,
+    mask_ratings,
+    dist_to_users,
+    comments_clusters,
+    users_table,
+):
     """Choose n users that has rated the game based on type:
-        - "similar"
-        - "random"
-        - "distant"
+    - "similar"
+    - "random"
+    - "distant"
     """
     users = mask_ratings[:, game_ind].nonzero()[0]
     users = users[users != target_user_ind]
@@ -108,30 +121,45 @@ def choose_users(target_user_ind, sim_users, n, users_type, game_ind, game_id, m
         users_ids = users_table[users_table["User index"].isin(select_users)]["User id"].values
 
         # Resample while not finding user that was not deleted
-        while (comments_clusters[(comments_clusters["Game id"] == game_id) & (comments_clusters["User id"].isin(users_ids))].empty):
+        while comments_clusters[
+            (comments_clusters["Game id"] == game_id) & (comments_clusters["User id"].isin(users_ids))
+        ].empty:
             select_users = np.random.choice(users, size=n, replace=False)
             users_ids = users_table[users_table["User index"].isin(select_users)]["User id"].values
 
     if users_type == "distant":
         distances = dist_to_users[users]
-        select_users = users[np.argpartition(-distances, kth=n-1)[:n]]
+        select_users = users[np.argpartition(-distances, kth=n - 1)[:n]]
         users_ids = users_table[users_table["User index"].isin(select_users)]["User id"].values
 
     return users_ids
 
 
-def eval_all_embeddings(user_id, matrix_ratings, mask_ratings, users_table, games_table,
-                        cos_dist_matrix, k, comments_clusters, clusters_weights,
-                        comments_lemmatized, lemmas, weight_type="count", specific_game=None):
+def eval_all_embeddings(
+    user_id,
+    matrix_ratings,
+    mask_ratings,
+    users_table,
+    games_table,
+    cos_dist_matrix,
+    k,
+    comments_clusters,
+    clusters_weights,
+    comments_lemmatized,
+    lemmas,
+    weight_type="count",
+    specific_game=None,
+):
 
-    user_ind, diff, sim_users, hidden_games, pred_ratings, dist_to_users = get_sim_users(user_id, matrix_ratings,
-                                                                                         mask_ratings, cos_dist_matrix,
-                                                                                         users_table, games_table, k, specific_game)
+    user_ind, diff, sim_users, hidden_games, pred_ratings, dist_to_users = get_sim_users(
+        user_id, matrix_ratings, mask_ratings, cos_dist_matrix, users_table, games_table, k, specific_game
+    )
     correct_ratings = hidden_games[np.argwhere(diff < ALLOW_ERR).flatten()]
     # games_ids = games_table[games_table["Game index"].isin(correct_ratings)]["Game id"].values
 
-    comments_clusters, clusters_weights = hide_comments(user_id, games_table, hidden_games,
-                                                        comments_clusters, clusters_weights, weight_type)
+    comments_clusters, clusters_weights = hide_comments(
+        user_id, games_table, hidden_games, comments_clusters, clusters_weights, weight_type
+    )
 
     all_scores, phrases = [], []
     for game_ind in correct_ratings:
@@ -141,13 +169,30 @@ def eval_all_embeddings(user_id, matrix_ratings, mask_ratings, users_table, game
 
         for users_type in ["similar", "random", "distant"]:
             game_id = games_table[games_table["Game index"] == game_ind]["Game id"].item()
-            users_ids = choose_users(user_ind, sim_users, nb_users, users_type, game_ind, game_id, mask_ratings,
-                                     dist_to_users, comments_clusters, users_table)
+            users_ids = choose_users(
+                user_ind,
+                sim_users,
+                nb_users,
+                users_type,
+                game_ind,
+                game_id,
+                mask_ratings,
+                dist_to_users,
+                comments_clusters,
+                users_table,
+            )
 
-            rouge1, rouge2, bleu, pred_phrases = find_phrases(user_id, game_id, users_ids,
-                                                              comments_clusters, clusters_weights, comments_lemmatized,
-                                                              lemmas, weight_type=weight_type)
-            if (np.nan in [rouge1, rouge2, bleu]):
+            rouge1, rouge2, bleu, pred_phrases = find_phrases(
+                user_id,
+                game_id,
+                users_ids,
+                comments_clusters,
+                clusters_weights,
+                comments_lemmatized,
+                lemmas,
+                weight_type=weight_type,
+            )
+            if np.nan in [rouge1, rouge2, bleu]:
                 # print([rouge1, rouge2, bleu], users_type, nb_users, users_ids, game_id)
                 no_append = True
                 break
@@ -164,14 +209,23 @@ def eval_all_embeddings(user_id, matrix_ratings, mask_ratings, users_table, game
     return all_scores
 
 
-def find_phrases(target_user_id, game_id, other_users_id,
-                 comments_clusters, clusters_weights, comments_lemmatized, lemmas,
-                 return_phrases=False, weight_type="count"):
+def find_phrases(
+    target_user_id,
+    game_id,
+    other_users_id,
+    comments_clusters,
+    clusters_weights,
+    comments_lemmatized,
+    lemmas,
+    return_phrases=False,
+    weight_type="count",
+):
 
-    other_users_comments = comments_clusters[comments_clusters["User id"].isin(other_users_id)
-                                             & (comments_clusters["Game id"] == game_id)]
+    other_users_comments = comments_clusters[
+        comments_clusters["User id"].isin(other_users_id) & (comments_clusters["Game id"] == game_id)
+    ]
 
-    if (other_users_comments.empty):
+    if other_users_comments.empty:
         # print("EMPTY", target_user_id, other_users_id, game_id)
         return np.nan, np.nan, np.nan
 
@@ -208,7 +262,7 @@ def find_phrases(target_user_id, game_id, other_users_id,
 
         distances = euclidean_distances(np.array(cluster_embeds["Embedding"].tolist()), mean).flatten()
         kth = min(distances.size, phrases_per_cluster)
-        dist_sorted = np.argpartition(distances, kth-1)[:kth]
+        dist_sorted = np.argpartition(distances, kth - 1)[:kth]
         sel_phrases = cluster_embeds.iloc[dist_sorted]["Phrases"]
         phrases.extend(sel_phrases)
 
@@ -219,10 +273,12 @@ def find_phrases(target_user_id, game_id, other_users_id,
         return phrases
 
     phrases_lemma = lemmatize_comment(
-        phrases, "/Users/bsh2022/Study/L3/Projet_recherche/TreeTagger", lemmas).reset_index()
+        phrases, "/Users/bsh2022/Study/L3/Projet_recherche/TreeTagger", lemmas
+    ).reset_index()
 
-    real_comment = comments_lemmatized[(comments_lemmatized["Game id"] == game_id) & (
-        comments_lemmatized["User id"] == target_user_id)]["Lemma"].item()
+    real_comment = comments_lemmatized[
+        (comments_lemmatized["Game id"] == game_id) & (comments_lemmatized["User id"] == target_user_id)
+    ]["Lemma"].item()
 
     rouge1, rouge2 = rouge_ngram_scores(" ".join(phrases_lemma["Lemma"]), real_comment)
     bleu = bleu_ngram_scores(phrases_lemma["Lemma"].str.cat(sep=" "), real_comment)
@@ -263,8 +319,9 @@ def plot_bi_uni_grams(users, unigrams, bigrams):
     bigrams_df = bigrams_df[~bigrams_df["Bigrams"].isna()]
 
     ax = sns.stripplot(data=unigrams_df, x="User id", y="Unigrams")
-    sns.pointplot(data=unigrams_df, x="User id", y="Unigrams", ax=ax,
-                  color="orange", label="Mean unigrams", errorbar=None)
+    sns.pointplot(
+        data=unigrams_df, x="User id", y="Unigrams", ax=ax, color="orange", label="Mean unigrams", errorbar=None
+    )
     sns.pointplot(data=bigrams_df, x="User id", y="Bigrams", ax=ax, color="green", label="Mean bigrams", errorbar=None)
 
     ax.set_ylabel("ROUGE score (in %)")

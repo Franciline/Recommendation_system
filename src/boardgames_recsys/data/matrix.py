@@ -5,14 +5,14 @@ from scipy.sparse import csr_array
 
 def center_score(df: pd.DataFrame):
     """
-    Center the ratings, with xi the score of user i, xi = xi - avg(i) 
+    Center the ratings, with xi the score of user i, xi = xi - avg(i)
     Necessary columns: 'User id' 'Rating'. Used to avoid biais in scores.
 
     Parameters
     ----------
-        df: dataframe, expected avis_clean 
-    
-    Returns 
+        df: dataframe, expected avis_clean
+
+    Returns
     -------
         Two pd.DataFrames:
          - Copy of the df with the ratings centered
@@ -24,21 +24,21 @@ def center_score(df: pd.DataFrame):
     # centering the scores
     mean_score = df[["User id", "Rating"]].groupby("User id").mean().rename(columns={"Rating": "Average rate"})
     mean_score = df.merge(mean_score, on="User id")
-    mean_score['Rating'] -=  mean_score['Average rate']
-    
-    return mean_score.drop(columns=['Average rate']), mean_score[["User id", "Average rate"]].drop_duplicates()
+    mean_score["Rating"] -= mean_score["Average rate"]
+
+    return mean_score.drop(columns=["Average rate"]), mean_score[["User id", "Average rate"]].drop_duplicates()
 
 
 def normalize(df: pd.DataFrame):
     """
-    Normalize the ratings, with xi the score of user i, xi = (xi - min(i)) / (max(i) - min(i)) 
+    Normalize the ratings, with xi the score of user i, xi = (xi - min(i)) / (max(i) - min(i))
     Necessary columns: 'User id' 'Rating'.
 
     Parameters
     ----------
-        df: dataframe, expected avis_clean 
-    
-    Returns 
+        df: dataframe, expected avis_clean
+
+    Returns
     -------
         Two pd.DataFrames:
          - Copy of the df with the ratings normalized
@@ -46,19 +46,20 @@ def normalize(df: pd.DataFrame):
     """
 
     df = df.copy(deep=True)
-    min_max = df.groupby("User id").agg({"Rating": ['min', 'max']}).reset_index()
+    min_max = df.groupby("User id").agg({"Rating": ["min", "max"]}).reset_index()
     min_max.columns = ["User id", "Min", "Max"]  # no index levels
     min_max = df.merge(min_max, on="User id")
-    
-    min_max['Rating'] = (min_max['Rating'] - min_max["Min"])/(min_max["Max"] - min_max["Min"])
-    min_max['Rating'] = min_max['Rating'].fillna(0) # NaN to 0 from division by 0
+
+    min_max["Rating"] = (min_max["Rating"] - min_max["Min"]) / (min_max["Max"] - min_max["Min"])
+    min_max["Rating"] = min_max["Rating"].fillna(0)  # NaN to 0 from division by 0
 
     return min_max.drop(columns=["Min", "Max"]), min_max[["User id", "Max", "Min"]].drop_duplicates()
 
 
 def get_matrix_user_game(df_reviews: pd.DataFrame):
     """
-    Create matrix where row = user, column = game. Value in row I and column J is the rating that user I gave to the game J.
+    Create matrix where row = user and column = game.
+    Value in row I and column J is the rating that user I gave to game J.
     Missing values (if user didn't evaluate the game) are filled with zeros.
 
     Parameters
@@ -78,8 +79,14 @@ def get_matrix_user_game(df_reviews: pd.DataFrame):
     # Matrix : row = user, column = game. Missing values (user didnt evaluate the game) are filled with nan
     # df_center, means = center_score(df_reviews)
 
-    matrix_ratings = pd.pivot_table(df_reviews[["User id", "Game id", "Rating"]], values="Rating", dropna=False,
-                                    index="User id", columns="Game id", fill_value=np.nan)
+    matrix_ratings = pd.pivot_table(
+        df_reviews[["User id", "Game id", "Rating"]],
+        values="Rating",
+        dropna=False,
+        index="User id",
+        columns="Game id",
+        fill_value=np.nan,
+    )
 
     games_table_assoc = pd.Series(data=matrix_ratings.columns)
     users_table_assoc = pd.Series(data=matrix_ratings.index)

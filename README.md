@@ -60,5 +60,3 @@ uv run --python 3.11 jupyter lab
 uv run --python 3.11 pytest
 uv run --python 3.11 ruff check .
 ```
-
-Some legacy lint categories are temporarily ignored per file in `pyproject.toml` for research code that was preserved from notebooks.

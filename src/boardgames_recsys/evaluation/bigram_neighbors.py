@@ -24,7 +24,9 @@ def _knn_sim_neg_pos(
     user_ind = users_table[users_table == user_id].index[0]
     games_to_hide = np.random.choice(games_to_consider, size=200, replace=False)
 
-    hidden_games = np.intersect1d(games_table[games_table.isin(games_to_hide)].index, mask_ratings[user_ind, :].nonzero()[0])
+    hidden_games = np.intersect1d(
+        games_table[games_table.isin(games_to_hide)].index, mask_ratings[user_ind, :].nonzero()[0]
+    )
 
     prev_ratings, prev_mask_ratings = matrix_ratings[user_ind, :], mask_ratings[user_ind, :]
     prev_sim = cos_sim_matrix[user_ind, :]

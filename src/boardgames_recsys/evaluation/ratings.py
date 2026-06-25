@@ -1,19 +1,19 @@
-from scipy.sparse import csr_array
-import pandas as pd
+from typing import Union
+
 import numpy as np
-from scipy.sparse import csr_array, lil_array, dok_array
-from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
-from sklearn.metrics import root_mean_squared_error, mean_absolute_error
+import pandas as pd
+from scipy.sparse import csr_array, dok_array, lil_array
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error
+from sklearn.metrics.pairwise import cosine_distances
+
 from boardgames_recsys.models.collaborative_filtering import calc_distance_matrix, get_KNN, predict_ratings_baseline
-from typing import Union
-
-
-from typing import Union
 
 # Evaluation ver 2 : hide randomly x% of ratings everywhere in a matrix
 
 
-def _hide_ratings_full_matrix(matrix_ratings: dok_array, mask_ratings: dok_array, percentage: float = 0.3) -> tuple[np.array, np.array]:
+def _hide_ratings_full_matrix(
+    matrix_ratings: dok_array, mask_ratings: dok_array, percentage: float = 0.3
+) -> tuple[np.array, np.array]:
     """Hide x% of existing ratings anywhere in a matrix.
     Modify INPLACE 'matrix_ratings', 'mask_ratings'
 
@@ -39,10 +39,18 @@ def _hide_ratings_full_matrix(matrix_ratings: dok_array, mask_ratings: dok_array
     return rows_to_hide, cols_to_hide
 
 
-def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.array,
-                similarity_matrix: Union[np.ndarray, csr_array], ratings_hidden: dok_array,
-                mask_hidden: dok_array, matrix_ratings: csr_array,
-                k: int, dist_type: str, metric: str) -> tuple[float, int]:
+def _treat_user(
+    user_ind: int,
+    all_hidden_users: np.array,
+    all_hidden_games: np.array,
+    similarity_matrix: Union[np.ndarray, csr_array],
+    ratings_hidden: dok_array,
+    mask_hidden: dok_array,
+    matrix_ratings: csr_array,
+    k: int,
+    dist_type: str,
+    metric: str,
+) -> tuple[float, int]:
     """Auxiliary function for 'calc_error_full_matrix' to predict ratings for one user.
 
     Parameters
@@ -73,7 +81,7 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
 
     Returns: !!!
         !Intermediate values! to calculate rmse, mae later.
-        Intermediate values : sum(true_rating - predicted_rating) (no division) and N : number of ratings that we were able to predict
+        Intermediate values: sum(true_rating - predicted_rating), without division, and predicted rating count.
 
         -> If metric = "rmse" or "mae", then return sum, np.nan, N
         -> If metric = "rmse_mae", then return sum_for_rmse, sum_for_mae, N
@@ -84,9 +92,9 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
     similar_users = get_KNN(similarity_matrix, k=k, user_ind=user_ind)
 
     # distance_weight = True if dist_type == "euclidean" else False
-    all_pred_ratings, able_to_predict = predict_ratings_baseline(ratings_hidden, mask_hidden,
-                                                                 similar_users, similarity_matrix, user_ind,
-                                                                 False)
+    all_pred_ratings, able_to_predict = predict_ratings_baseline(
+        ratings_hidden, mask_hidden, similar_users, similarity_matrix, user_ind, False
+    )
 
     to_eval = np.intersect1d(able_to_predict, user_hidden_ratings)
 
@@ -106,8 +114,9 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
     return *sum_error, count_predicted
 
 
-def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
-                           metric: str, dist_type: str, k: int = None, rev_w=False) -> tuple[float, float, int]:
+def calc_error_full_matrix(
+    matrix_ratings: csr_array, mask_ratings: csr_array, metric: str, dist_type: str, k: int = None, rev_w=False
+) -> tuple[float, float, int]:
     """Evaluate quality of rating's prediction by hiding 20% of all existing ratings anywhere in User-game matrix.
 
     Parameters
@@ -162,12 +171,21 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
 
     print(f"Number of hidden ratings : {users_hidden.size} ({matrix_ratings.data.size} existing ratings)")
     # hide 20% of his games
-    treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=['f', 'f', 'i'])
+    treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=["f", "f", "i"])
 
     # sum1 = sum_rmse or sum_mae, sum2 = sum_mae or np.nan
-    sum1, sum2, count_predicted = treat_user_vect(np.unique(users_hidden), users_hidden, games_hidden,
-                                                  sim_matrix_hidden, ratings_hidden, mask_hidden, matrix_ratings,
-                                                  k, dist_type, metric)
+    sum1, sum2, count_predicted = treat_user_vect(
+        np.unique(users_hidden),
+        users_hidden,
+        games_hidden,
+        sim_matrix_hidden,
+        ratings_hidden,
+        mask_hidden,
+        matrix_ratings,
+        k,
+        dist_type,
+        metric,
+    )
 
     sum_count = np.sum(count_predicted)
     nb_non_predicted = users_hidden.size - sum_count
@@ -248,15 +266,19 @@ def recalc_cos_similarity(user_ind: int, matrix_ratings, similarity_matrix: np.n
     new_distance = cosine_distances(matrix_ratings[user_ind].reshape(1, -1), matrix_ratings)[0]
     # for user in range(matrix_ratings.shape[0]):
     if users_reviews is not None:
-        new_distance = new_distance * \
-            np.minimum.outer(users_reviews[user_ind], users_reviews) * \
-            np.maximum.outer(users_reviews[user_ind], users_reviews)
+        new_distance = (
+            new_distance
+            * np.minimum.outer(users_reviews[user_ind], users_reviews)
+            * np.maximum.outer(users_reviews[user_ind], users_reviews)
+        )
 
     similarity_matrix[:, user_ind] = new_distance
     similarity_matrix[user_ind, :] = new_distance
 
 
-def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similarity_matrix: lil_array, users_reviews=None) -> None:
+def recalc_eucl_similarity(
+    user_ind: int, matrix_ratings, mask_ratings, similarity_matrix: lil_array, users_reviews=None
+) -> None:
     R, M = matrix_ratings, mask_ratings
     UR, UM = R[user_ind], M[user_ind]
 
@@ -265,21 +287,32 @@ def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similari
 
     # Ponderation (division) by a number of shared games
     weights = M.dot(UM.transpose()).tocsr()
-    inverse_weights = csr_array((1/weights.data, weights.indices, weights.indptr), shape=weights.shape)
+    inverse_weights = csr_array((1 / weights.data, weights.indices, weights.indptr), shape=weights.shape)
     eucl_squared_ponder = inverse_weights.multiply(eucl_squared).maximum(0).sqrt()
 
     if users_reviews is not None:
-        eucl_squared_ponder = eucl_squared_ponder * np.minimum.outer(users_reviews[user_ind], users_reviews) * \
-            np.maximum.outer(users_reviews[user_ind], users_reviews)
+        eucl_squared_ponder = (
+            eucl_squared_ponder
+            * np.minimum.outer(users_reviews[user_ind], users_reviews)
+            * np.maximum.outer(users_reviews[user_ind], users_reviews)
+        )
 
     similarity_matrix[user_ind, :] = eucl_squared_ponder.toarray()
     similarity_matrix[:, user_ind] = eucl_squared_ponder.toarray()
 
 
-def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
-               similarity_matrix: csr_array, metric: str, dist_type: str, users_reviews=None, k=None) -> tuple[float, float]:
+def calc_error(
+    user: int,
+    matrix_ratings: csr_array,
+    mask_ratings: csr_array,
+    similarity_matrix: csr_array,
+    metric: str,
+    dist_type: str,
+    users_reviews=None,
+    k=None,
+) -> tuple[float, float]:
     """
-    Calculate RMSE/MAE for predicted ratings [these ratings were hidden] for 'user' (30% of all games that 'user' has rated)
+    Calculate RMSE/MAE for hidden ratings for `user`.
     TODO: method 2 to evaluate -> hide randomly in a matrix.
 
     Parameters
@@ -302,15 +335,15 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
         If metric = "rmse_mae" -> return rmse, mae (float, float)
         If nothing could be predicted -> return np.nan, np.nan
     """
-    if (not k):
+    if not k:
         k = int(np.sqrt(matrix_ratings.shape[0]))
 
     # Conversion for efficient modification
     R = matrix_ratings.tolil()  # R : ratings (matrix_ratings)
-    M = mask_ratings.tolil()    # M : mask (mask_ratings)
+    M = mask_ratings.tolil()  # M : mask (mask_ratings)
 
     if isinstance(similarity_matrix, np.ndarray):
-        S = similarity_matrix   # S : similarity (similarity_matrx)
+        S = similarity_matrix  # S : similarity (similarity_matrx)
     else:
         S = similarity_matrix.tolil()
 
@@ -356,8 +389,10 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
             case "mae":
                 error = mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]), np.nan
             case "rmse_mae":
-                error = root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]), \
-                    mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+                error = (
+                    root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]),
+                    mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]),
+                )
 
     if users_reviews is not None:
         users_reviews[user] += len(hidden_games)
@@ -383,34 +418,43 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 
     return error
 
+
 # RMSE & MAE means
 
 
-def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int, max_reviews: int, matrix_ratings: csr_array, mask_ratings: csr_array, similarity_matrix: np.ndarray, dist_type: str):
+def calc_RMSE_MAE_mean(
+    k: np.ndarray,
+    user_count: pd.DataFrame,
+    min_reviews: int,
+    max_reviews: int,
+    matrix_ratings: csr_array,
+    mask_ratings: csr_array,
+    similarity_matrix: np.ndarray,
+    dist_type: str,
+):
     """
-        Calculate the RMSE and MAE for every user matching the number of reviews requierments for using K-NN method for each given K.
+    Calculate RMSE and MAE for every user matching K-NN review count requirements for each K.
 
-        Parameters :
-        ----------
-            k (np.ndarray) : k for K-nn
-            user_count (pd.DataFrame) : DF with User id and Review_count
-            min_reviews, max_reviews (int) :
-            matrix_ratings :
-            mask_ratings :
-            similarity_matrix :
-            dist_type :
+    Parameters :
+    ----------
+        k (np.ndarray) : k for K-nn
+        user_count (pd.DataFrame) : DF with User id and Review_count
+        min_reviews, max_reviews (int) :
+        matrix_ratings :
+        mask_ratings :
+        similarity_matrix :
+        dist_type :
 
-        Returns :
-            (filtered_users.size, 4) shaped DF, columns = ['User id', k, 'Type' : RMSE, MAE, 'value']
+    Returns :
+        (filtered_users.size, 4) shaped DF, columns = ['User id', k, 'Type' : RMSE, MAE, 'value']
     """
 
     # User filtering based on number of reviews
     np.random.seed(1)
-    filtered = user_count[(user_count['Count reviews'] >= min_reviews) & (
-        user_count['Count reviews'] <= max_reviews)]
+    filtered = user_count[(user_count["Count reviews"] >= min_reviews) & (user_count["Count reviews"] <= max_reviews)]
     filtered = filtered.sample(min(100, filtered.shape[0]))
 
-    users = filtered[['User index']].to_numpy().flatten()
+    users = filtered[["User index"]].to_numpy().flatten()
     print(users.size)
     # Dataframe creation
     data_rmse, data_mae = [], []
@@ -418,11 +462,11 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
     for tmp_k in k:
         np.random.seed(1)  # to evaluate on the same games
         # otypes = tuple[float, float]
-        vect_rsme_mae = np.vectorize(calc_error, excluded=(1, 2, 3, 4, 5, 6), otypes=['f', 'f'])
+        vect_rsme_mae = np.vectorize(calc_error, excluded=(1, 2, 3, 4, 5, 6), otypes=["f", "f"])
 
-        rmse, mae = vect_rsme_mae(users, matrix_ratings, mask_ratings,
-                                  similarity_matrix, metric="rmse_mae",
-                                  dist_type=dist_type, k=tmp_k)
+        rmse, mae = vect_rsme_mae(
+            users, matrix_ratings, mask_ratings, similarity_matrix, metric="rmse_mae", dist_type=dist_type, k=tmp_k
+        )
         data_rmse.append(rmse)
         data_mae.append(mae)
 
@@ -435,7 +479,7 @@ def calc_RMSE_MAE_mean(k: np.ndarray, user_count: pd.DataFrame, min_reviews: int
     # divide RMSE into Value and Type, the same for MAE
     df = df.melt(id_vars="K", value_vars=["RMSE", "MAE"], var_name="Type", value_name="Value")
 
-    df['K'] = df['K'].astype(np.int64)
-    df['Value'] = df['Value'].astype(np.float64)
-    df['Type'] = df['Type'].astype(str)
+    df["K"] = df["K"].astype(np.int64)
+    df["Value"] = df["Value"].astype(np.float64)
+    df["Type"] = df["Type"].astype(str)
     return df

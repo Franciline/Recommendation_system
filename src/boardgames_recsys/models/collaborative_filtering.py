@@ -1,8 +1,8 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
+import numpy as np
+import pandas as pd
 from scipy.sparse import csr_array
+from sklearn.metrics.pairwise import cosine_distances
 
 # Comment style
 """
@@ -65,7 +65,7 @@ def _eucl_sparse(matrix_ratings, mask_ratings):
 
     # Calc ponderation. Every eucl_dist(u1, u2) is divided by common ratings shared by u1, u2
     weights = M.dot(M.transpose())
-    inverse_weights = csr_array((1/weights.data, weights.indices, weights.indptr), shape=weights.shape)
+    inverse_weights = csr_array((1 / weights.data, weights.indices, weights.indptr), shape=weights.shape)
 
     # .sqrt is not necessary
     return eucl_squared.multiply(inverse_weights).sqrt()
@@ -96,7 +96,7 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
         sim_user_row = similarity_matrix[user_ind].copy()
         sim_user_row[user_ind] = np.inf  # to prevent choosing user himself
         ksmallest = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 2))
-        return ksmallest[:min(k, sim_user_row.size - 1)]
+        return ksmallest[: min(k, sim_user_row.size - 1)]
 
     # EUCLIDEAN (csr_array)
     sim_user_row = similarity_matrix[user_ind].data
@@ -104,14 +104,16 @@ def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     if sim_user_row.size <= 1:
         return np.array([])
 
-    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size-1))  # in O(n)
-    return similarity_matrix[user_ind].col[indices][:min(k, sim_user_row.size)]  # user's indices
+    indices = np.argpartition(sim_user_row, kth=min(k, sim_user_row.size - 1))  # in O(n)
+    return similarity_matrix[user_ind].col[indices][: min(k, sim_user_row.size)]  # user's indices
 
 
-def weight_avg_distance(similarity_matrix, similar_users: np.array,
-                        matrix_ratings, mask_ratings, user_ind: int) -> np.array:
+def weight_avg_distance(
+    similarity_matrix, similar_users: np.array, matrix_ratings, mask_ratings, user_ind: int
+) -> np.array:
     """
-    Calculate ponderated average (scaled back) of games ratings by users distances to each other.The weight W of a distance d = 1/d.
+    Calculate scaled weighted average ratings from user distances.
+    The weight W of a distance d is 1 / d.
 
     Parameters
     ----------
@@ -148,7 +150,9 @@ def weight_avg_distance(similarity_matrix, similar_users: np.array,
     return prediction, np.nonzero(sums)[0]
 
 
-def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, matrix_ratings: csr_array, user_ind: int, means) -> np.array:
+def weight_avg_nb_reviews(
+    df_reviews: pd.DataFrame, similar_users: np.array, matrix_ratings: csr_array, user_ind: int, means
+) -> np.array:
     """
     Calculate ponderated average (scaled back) of games ratings by number of reviews.
 
@@ -198,10 +202,12 @@ def weight_avg_nb_reviews(df_reviews: pd.DataFrame, similar_users: np.array, mat
 #     return np.sum(np.tile(coefs, (m, 1)) * weighted_means.T, axis=1)
 
 
-def predict_ratings_baseline(matrix_ratings, mask_ratings, similar_users: np.array, similarity_matrix, user_ind, distance_weight=False) -> np.array:
+def predict_ratings_baseline(
+    matrix_ratings, mask_ratings, similar_users: np.array, similarity_matrix, user_ind, distance_weight=False
+) -> np.array:
     """
-    Baseline. Predict ratings for all existing games in 'matrix_ratings'. If the rating cannot be predicted (i.e. there is no similar user
-    who has rated the game), then the rating is 0.
+    Baseline. Predict ratings for all existing games in `matrix_ratings`.
+    If no similar user has rated the game, then the rating is 0.
 
     Parameters
     ----------
@@ -220,11 +226,13 @@ def predict_ratings_baseline(matrix_ratings, mask_ratings, similar_users: np.arr
     if distance_weight:
         return weight_avg_distance(similarity_matrix, similar_users, matrix_ratings, mask_ratings, user_ind)
 
-    users_ratings = matrix_ratings[similar_users]             # ratings of similar users
-    valid_count = mask_ratings[similar_users].sum(axis=0)     # number of existing rating (for division to calc mean)
-    games_means = np.zeros(shape=(users_ratings.shape[1], ))  # put 0 for ratings where no ratings are known
+    users_ratings = matrix_ratings[similar_users]  # ratings of similar users
+    valid_count = mask_ratings[similar_users].sum(axis=0)  # number of existing rating (for division to calc mean)
+    games_means = np.zeros(shape=(users_ratings.shape[1],))  # put 0 for ratings where no ratings are known
     # calc means
-    return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0), np.nonzero(valid_count)[0]
+    return np.divide(users_ratings.sum(axis=0), valid_count, out=games_means, where=valid_count != 0), np.nonzero(
+        valid_count
+    )[0]
 
 
 def get_games_ind(predicted_ratings: np.array, n: int) -> np.array:
@@ -241,7 +249,7 @@ def get_games_ind(predicted_ratings: np.array, n: int) -> np.array:
         np.array : Array of selected games indices (columns in a matrix)
     """
 
-    return np.argpartition(-predicted_ratings,  kth=min(n, predicted_ratings.size))[:n]
+    return np.argpartition(-predicted_ratings, kth=min(n, predicted_ratings.size))[:n]
 
 
 def get_games_df(df_games: pd.DataFrame, table_assoc: pd.Series, selected_games: np.array) -> pd.DataFrame:
@@ -277,7 +285,7 @@ def distance_evolution(matrix_ratings, mask_matrix, k: int, user_ind: int) -> np
     get_dists = np.vectorize(lambda x: similarity_matrix[user_ind][x])
     distances = get_dists(voisins)
 
-    x_data = np.arange(int(max(distances)+1), step=1)
+    x_data = np.arange(int(max(distances) + 1), step=1)
     nb_nn = np.vectorize(lambda x: (distances[distances < x]).size)
     y_data = nb_nn(x_data)
 
