@@ -57,20 +57,21 @@ Recommended final layout:
 
 ### Packaging and dependency management
 
-- [ ] Complete `pyproject.toml` for `uv`.
+- [v] Complete `pyproject.toml` for `uv`.
   - Set a supported Python version. The current `requires-python = ">=3.13"` is probably too strict because the notebooks reference Python 3.11 environments and some scientific packages may lag on 3.13.
   - Add runtime dependencies found in the code: `numpy`, `pandas`, `scipy`, `scikit-learn`, `matplotlib`, `seaborn`, `dash`, `dash-bootstrap-components`, `plotly`, `pydeck`, `dash-deck`, `dash-extensions`, `nltk`, `unidecode`, `sacrebleu`, `rouge`, `ollama`, `pillow`, and `scikit-surprise` if NNMF/SVD notebooks must remain runnable.
   - Add optional dependency groups such as `dev` (`pytest`, `ruff`, `nbstripout`, `jupyterlab`) and `app` if the Dash demo should be installable separately.
   - Generate and DO NOT commit `uv.lock` with `uv lock`.
-- [ ] Add useful project scripts.
+- [v] Add useful project scripts.
   - Example: `boardgames-recsys-app = "boardgames_recsys.app.app:main"` for the Dash app.
   - Optionally add a CLI entry point for reproducible data generation/evaluation commands.
 
 ### Source package migration
 
-- [ ] Move `reco_systems/` into `src/boardgames_recsys/`.
-  - Convert imports from `reco_systems.*` to `boardgames_recsys.*` in Python files and notebooks.
-  - Keep a temporary compatibility shim only if old notebooks must run unchanged.
+- [v] Move `reco_systems/` into `src/boardgames_recsys/`.
+  - Python imports were converted from `reco_systems.*` to `boardgames_recsys.*`.
+  - A temporary compatibility shim keeps old notebooks runnable while notebook imports are migrated later.
+  - [ ] Convert notebook imports from `reco_systems.*` to `boardgames_recsys.*`.
 - [ ] Rename unclear modules while moving them.
   - `CF_knn.py` -> `models/collaborative_filtering.py`
   - `user_game_matrix.py` -> `data/matrix.py`
@@ -91,11 +92,11 @@ Recommended final layout:
 
 ### Dash app cleanup
 
-- [ ] Move `app_interactive/app.py` to `src/boardgames_recsys/app/app.py`.
-- [ ] Move `app_interactive/assets/style.css` with the app package.
-- [ ] Move app runtime artifacts (`clusters.npy`, `tsne_pushed.npy`, `nnmf_prediction.npy`, `games_info.json`, `users_info.json`, `summaries.json`, `special_user_comments.json`) to `data/app/` or `src/boardgames_recsys/app/data/`.
-- [ ] Replace working-directory relative paths with paths based on `pathlib.Path(__file__)` or configurable environment variables.
-- [ ] Move `app_interactive/data_gen.ipynb` and `comment_gen.ipynb` to `notebooks/05_app_generation/`.
+- [v] Move `app_interactive/app.py` to `src/boardgames_recsys/app/app.py`.
+- [v] Move `app_interactive/assets/style.css` with the app package.
+- [v] Move app runtime artifacts (`clusters.npy`, `tsne_pushed.npy`, `nnmf_prediction.npy`, `games_info.json`, `users_info.json`, `summaries.json`, `special_user_comments.json`) to `data/app/` or `src/boardgames_recsys/app/data/`.
+- [v] Replace working-directory relative paths with paths based on `pathlib.Path(__file__)` or configurable environment variables.
+- [v] Move `app_interactive/data_gen.ipynb` and `comment_gen.ipynb` to `notebooks/05_app_generation/`.
 
 ### Notebook organization
 
@@ -115,11 +116,11 @@ Recommended final layout:
 - [ ] Decide which generated files must stay in Git.
   - Keep small demo fixtures needed to run the app.
   - Move large reproducible outputs such as `generated_data/comments_stemmed.csv` to ignored `data/processed/` unless needed for review.
-- [ ] Update `.gitignore`.
+- [v] Update `.gitignore`.
   - Ignore `data/raw/`, `data/interim/`, `data/processed/`, notebook checkpoints, model caches, and local `.venv/`.
   - Stop ignoring every `*.csv` globally if small committed fixtures are expected; prefer directory-based ignore rules.
 - [ ] DO NOT use Git LFS or external release assets for video, PDF, large CSV, and future model/data artifacts. If the file it too large, it should not be commited.
-- [ ] Create a markdown file that specifies what we avoid commiting to git and what was the function of the ignored file.
+- [v] Create a markdown file that specifies what we avoid commiting to git and what was the function of the ignored file.
 
 ### Documentation
 
@@ -133,10 +134,10 @@ Recommended final layout:
 
 - [ ] Add `tests/` for reusable functions.
   - Start with deterministic tests for `filter_df`, matrix construction, KNN neighbor selection, hiding ratings, and metric calculations.
-- [ ] Configure `ruff` in `pyproject.toml`.
+- [v] Configure `ruff` in `pyproject.toml`.
   - Enforce import sorting, unused imports, and obvious bug checks before doing broader style cleanup.
 - [ ] Add a minimal smoke test for the app import or layout creation.
-- [ ] Define verification commands.
+- [v] Define verification commands.
   - `uv run pytest`
   - `uv run ruff check .`
   - `uv run boardgames-recsys-app`

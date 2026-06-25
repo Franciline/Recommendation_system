@@ -27,6 +27,9 @@ dependencies = [
     "unidecode>=1.3",
 ]
 
+[project.scripts]
+boardgames-recsys-app = "boardgames_recsys.app.app:main"
+
 [dependency-groups]
 dev = [
     "ipykernel>=6.29",

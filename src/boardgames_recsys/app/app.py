@@ -1,13 +1,19 @@
 from math import log2
 import os
+from pathlib import Path
+
 import dash_bootstrap_components as dbc
-from plotly.colors import qualitative
 from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
 import pandas as pd
 import numpy as np
 import pydeck as pdk
 import dash_deck
 from dash_extensions import Lottie
+
+
+BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parents[2]
+APP_DATA_DIR = Path(os.environ.get("BOARDGAMES_RECSYS_APP_DATA", REPO_ROOT / "data" / "app"))
 
 
 def get_deck(points, view, point_size=2.5):
@@ -78,18 +84,18 @@ def recalc_view(points, game_info, initial_view_state):
 
 
 n_clusters = 30  # -> 30 colors to generate
-games_tsne = np.load("tsne_pushed.npy", mmap_mode="r")   # TSNE 3D
-clusters = np.load("clusters.npy", mmap_mode="r")        # Clusters assignment
+games_tsne = np.load(APP_DATA_DIR / "tsne_pushed.npy", mmap_mode="r")   # TSNE 3D
+clusters = np.load(APP_DATA_DIR / "clusters.npy", mmap_mode="r")        # Clusters assignment
 
 # NNMF prediction U @ G.T (already existing ratings are replaced by true ones)
-nmf_pred = np.load("nnmf_prediction.npy", mmap_mode="r")
+nmf_pred = np.load(APP_DATA_DIR / "nnmf_prediction.npy", mmap_mode="r")
 
 # users_info = pd.read_parquet("users_info.parquet")  # info on users
-users_info = pd.read_json("users_info.json", orient="records")
-games_info = pd.read_json("games_info.json", orient="records")
-summaries = pd.read_json("summaries.json", orient="records")
+users_info = pd.read_json(APP_DATA_DIR / "users_info.json", orient="records")
+games_info = pd.read_json(APP_DATA_DIR / "games_info.json", orient="records")
+summaries = pd.read_json(APP_DATA_DIR / "summaries.json", orient="records")
 
-special_user_comments = pd.read_json("special_user_comments.json", orient="records")
+special_user_comments = pd.read_json(APP_DATA_DIR / "special_user_comments.json", orient="records")
 summaries_games_indices = [405, 503, 689, 985, 1380]
 
 # For themes-dropdown
@@ -120,7 +126,7 @@ fw_shown = dict(loop=False, autoplay=True,
                 style={"display": "block", "position": "absolute", "left": "15%", "top": "10%"})
 special_index = 39  # index
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], assets_folder=str(BASE_DIR / "assets"))
 
 # View
 lat, lon, target = get_view_params(games_info)
@@ -566,5 +572,9 @@ def delete_animation(n_intervals):
     return True, fw_hidden
 
 
-if __name__ == '__main__':
+def main():
     app.run(debug=True)
+
+
+if __name__ == '__main__':
+    main()
