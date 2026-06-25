@@ -1,9 +1,8 @@
 from sacrebleu import corpus_bleu
 from math import ceil
-from boardgames_recsys.text.lemmatization import *
-from boardgames_recsys.evaluation.ratings import *
-from boardgames_recsys.models.collaborative_filtering import *
-from boardgames_recsys.text.filtering import *
+from boardgames_recsys.evaluation.ratings import hide_ratings, recalc_cos_similarity
+from boardgames_recsys.models.collaborative_filtering import get_KNN, predict_ratings_baseline
+from boardgames_recsys.text.lemmatization import lemmatize_comment
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 from sklearn.metrics.pairwise import euclidean_distances

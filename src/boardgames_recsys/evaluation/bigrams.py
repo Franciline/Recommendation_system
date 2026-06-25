@@ -6,9 +6,8 @@ import seaborn as sns
 from collections import Counter
 from nltk.collocations import BigramCollocationFinder, BigramAssocMeasures
 
-from boardgames_recsys.data.matrix import *
-from boardgames_recsys.models.collaborative_filtering import *
-from boardgames_recsys.evaluation.ratings import *
+from boardgames_recsys.evaluation.ratings import hide_ratings, recalc_cos_similarity
+from boardgames_recsys.models.collaborative_filtering import get_KNN, predict_ratings_baseline
 from rouge import Rouge
 from sacrebleu import BLEU
 from nltk import bigrams

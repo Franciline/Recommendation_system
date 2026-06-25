@@ -78,8 +78,9 @@ Recommended final layout:
   - `filter.py` -> `data/filtering.py`
   - `text_filtering.py`, `lemmatization.py`, `embeds_utils.py`, `llm.py` -> `text/`
   - `evaluation.py`, `evaluation_weight.py`, `evaluation_bigrams_func.py` -> `evaluation/`
-- [ ] Remove wildcard imports from reusable code.
+- [v] Remove wildcard imports from reusable code.
   - Replace `from ... import *` with explicit imports to make dependencies and public APIs clear.
+  - Compatibility wrappers still use wildcard re-exports intentionally.
 - [ ] Split oversized modules.
   - `evaluation_bigrams_func.py` is about 770 lines and should be divided into extraction, scoring, and plotting/evaluation helpers.
   - `evaluation.py` and `evaluation_weight.py` duplicate concepts; merge shared hide/predict/metric code.
