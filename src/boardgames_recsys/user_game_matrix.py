@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.sparse import csr_array, dok_array, coo_array
+from scipy.sparse import csr_array
 
 
 def center_score(df: pd.DataFrame):
@@ -83,7 +83,7 @@ def get_matrix_user_game(df_reviews: pd.DataFrame):
 
     games_table_assoc = pd.Series(data=matrix_ratings.columns)
     users_table_assoc = pd.Series(data=matrix_ratings.index)
-    matrix_ratings = matrix_ratings.to_numpy()
+    matrix_ratings = matrix_ratings.to_numpy(copy=True)
 
     # means = df_reviews[["User id", "Rating"]].groupby("User id", as_index=True).mean()
     # Create matrix with 0 for missing values and 1 for existing values

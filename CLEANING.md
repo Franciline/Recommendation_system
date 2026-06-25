@@ -119,24 +119,24 @@ Recommended final layout:
 - [v] Update `.gitignore`.
   - Ignore `data/raw/`, `data/interim/`, `data/processed/`, notebook checkpoints, model caches, and local `.venv/`.
   - Stop ignoring every `*.csv` globally if small committed fixtures are expected; prefer directory-based ignore rules.
-- [ ] DO NOT use Git LFS or external release assets for video, PDF, large CSV, and future model/data artifacts. If the file it too large, it should not be commited.
+- [v] DO NOT use Git LFS or external release assets for video, PDF, large CSV, and future model/data artifacts. If the file it too large, it should not be commited.
 - [v] Create a markdown file that specifies what we avoid commiting to git and what was the function of the ignored file.
 
 ### Documentation
 
-- [ ] Rewrite `README.md` around the cleaned structure.
+- [v] Rewrite `README.md` around the cleaned structure.
   - Include project purpose, installation with `uv sync`, how to run the Dash app, how to reproduce key analyses, and where data must be placed.
 - [ ] Move long-form material to `docs/` if the README becomes too large.
   - Suggested files: `docs/data.md`, `docs/app.md`, `docs/reproducibility.md`, `docs/modeling.md`.
-- [ ] Update `AGENTS.md` after restructuring so contributor guidance matches the new layout and commands.
+- [v] Update `AGENTS.md` after restructuring so contributor guidance matches the new layout and commands.
 
 ### Tests, linting, and verification
 
-- [ ] Add `tests/` for reusable functions.
+- [v] Add `tests/` for reusable functions.
   - Start with deterministic tests for `filter_df`, matrix construction, KNN neighbor selection, hiding ratings, and metric calculations.
 - [v] Configure `ruff` in `pyproject.toml`.
   - Enforce import sorting, unused imports, and obvious bug checks before doing broader style cleanup.
-- [ ] Add a minimal smoke test for the app import or layout creation.
+- [v] Add a minimal smoke test for the app import or layout creation.
 - [v] Define verification commands.
   - `uv run pytest`
   - `uv run ruff check .`

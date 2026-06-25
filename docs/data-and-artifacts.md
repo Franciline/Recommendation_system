@@ -11,6 +11,7 @@ This repo should contain source code, small reproducible fixtures, notebooks, an
 - `data/processed/`: large processed outputs that can be regenerated.
 - `generated_data/comments_stemmed.csv`: generated NLP table; too large for normal Git history.
 - `.venv/`: local Python environment created by `uv`.
+- `.pytest_cache/`, `.ruff_cache/`: local verification caches.
 - `uv.lock`: generated for local reproducibility checks, but intentionally not committed for this research cleanup.
 - `.ipynb_checkpoints/`, `__pycache__/`, `.DS_Store`: tool and OS caches.
 

@@ -1,15 +1,14 @@
-from math import log2
 import os
+from math import log2
 from pathlib import Path
 
 import dash_bootstrap_components as dbc
-from dash import Dash, html, dcc, callback, Output, Input, State, ctx, ALL, MATCH, no_update
-import pandas as pd
-import numpy as np
-import pydeck as pdk
 import dash_deck
+import numpy as np
+import pandas as pd
+import pydeck as pdk
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash_extensions import Lottie
-
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parents[2]
@@ -358,7 +357,7 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
     # new_deck = get_deck(points, view, compute_point_size(points.shape[0]))
 
     # Exploration mode -> go to Reco mode
-    if explore_mode == True:
+    if explore_mode:
         common = False, "", "🔁 Exploration", False,
         if current_user == special_index:
             return *common, *(no_update,) * 3, fw_hidden
@@ -397,7 +396,7 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
 
     global initial_view_state, games_info
 
-    if user_index == None or plotted_games_index is None:
+    if user_index is None or plotted_games_index is None:
         return (no_update,) * 8
 
     points = games_info[games_info["game index"].isin(plotted_games_index)]
@@ -498,8 +497,14 @@ def show_reco_games(n_clicks, current_classname, current_user_index):
         "marginTop": "0px",
         "marginBottom": "10px",
     })]
-    children += [_get_reco_game_div(game, rating)
-                 for game, rating in zip(top_games, np.clip(nmf_pred[current_user_index, top_games] * 8 + 2, 0, 10))]
+    children += [
+        _get_reco_game_div(game, rating)
+        for game, rating in zip(
+            top_games,
+            np.clip(nmf_pred[current_user_index, top_games] * 8 + 2, 0, 10),
+            strict=False,
+        )
+    ]
 
     return 'dropdown-reco-games open', children, 'button-reco-games open', True
 

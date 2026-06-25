@@ -2,37 +2,34 @@
 
 ## Project Structure & Module Organization
 
-This repository contains research code for explainable board-game recommendation systems. Reusable Python utilities live in `reco_systems/`, including collaborative filtering, matrix construction, text processing, LLM helpers, and evaluation functions. Exploratory and evaluation workflows are kept as Jupyter notebooks in `notebooks/`, with earlier cleaning and visualization notebooks in `data_cleaning_analysis/` and `data_visualization/`. The Dash/DeckGL demo application is in `app_interactive/`; its app-local JSON and NumPy artifacts are required at runtime. Shared result artifacts are in `generated_data/`. Large deliverables such as `Project_Report.pdf` and `Preview_video.mp4` document the project output.
+Reusable Python code lives in `src/boardgames_recsys/`. The temporary `reco_systems/` package is only a compatibility shim for old notebooks. The Dash app is in `src/boardgames_recsys/app/`, with runtime data in `data/app/`. Notebooks are grouped by workflow under `notebooks/01_cleaning/` through `notebooks/05_app_generation/`. Reports and videos live in `reports/`; maintenance notes live in `docs/`; tests live in `tests/`.
 
 ## Build, Test, and Development Commands
 
-No package manager or test runner is configured in the repository. Use a local virtual environment and install dependencies inferred from imports:
+Use `uv` with Python 3.11:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install numpy pandas scipy scikit-learn matplotlib dash dash-bootstrap-components plotly pydeck dash-deck dash-extensions jupyter
+uv sync --python 3.11
+uv run --python 3.11 pytest
+uv run --python 3.11 ruff check .
+uv run --python 3.11 boardgames-recsys-app
+uv run --python 3.11 jupyter lab
 ```
 
-Run the interactive app from its data directory so relative file paths resolve:
-
-```bash
-cd app_interactive
-python app.py
-```
+`uv.lock` is generated for local checks but intentionally ignored. The app reads `data/app/` unless `BOARDGAMES_RECSYS_APP_DATA` points elsewhere.
 
 ## Coding Style & Naming Conventions
 
-Use Python 3 with 4-space indentation and descriptive snake_case names for functions, variables, and modules. Keep reusable logic in `reco_systems/`; notebooks should call those helpers instead of duplicating algorithms. Prefer NumPy, pandas, SciPy sparse matrices, and scikit-learn APIs over manual loops where practical. Existing docstrings use `Parameters` and `Returns` sections; follow that style for public helpers. Avoid committing generated caches such as `__pycache__/` or `.DS_Store`.
+Use Python 3.11, 4-space indentation, snake_case functions, and descriptive module names. Prefer explicit imports over `from ... import *`. Keep reusable logic in `src/boardgames_recsys/`; notebooks should orchestrate experiments, not define shared algorithms. Existing public helpers use `Parameters` and `Returns` docstring sections; keep that style for now.
 
 ## Testing Guidelines
 
-There is currently no formal `tests/` directory. For new reusable code, add focused tests under `tests/` using `pytest`, with filenames like `test_evaluation.py` and test functions named `test_<behavior>()`. For notebook-only changes, run the affected notebook top-to-bottom and record any required data inputs. For recommendation metrics, include small deterministic fixtures and set random seeds before sampling hidden ratings.
+Add focused `pytest` tests under `tests/`, named `test_<module>.py` with functions named `test_<behavior>()`. Use small deterministic DataFrames and sparse matrices; set random seeds for sampling-based metrics. For notebook changes, run the affected notebook top-to-bottom and note required data inputs in the PR.
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses short, imperative-style messages such as `Video added`, `project report added`, and `cleaning`. Keep commits concise and scoped to one change. Pull requests should summarize the affected workflow, list commands or notebooks run, note data artifacts added or regenerated, and include screenshots or a short recording for `app_interactive` UI changes. Link related issues when available.
+Commit small, reversible steps. Existing history uses short messages such as `Video added`, `project report added`, and `cleaning`; keep messages concise but more specific where possible. PRs should explain moved paths, commands run, data artifacts added or removed, and app screenshots or recordings for UI changes.
 
-## Security & Configuration Tips
+## Data & Artifact Policy
 
-Do not commit raw scraped databases or private/local datasets; `.gitignore` already excludes `trictrac_database/`, `database_cleaned/`, and most CSV files. Document any required external data location and keep app assets small enough for normal repository use.
+Do not commit raw scraped DBs, local cleaned DBs, large generated tables, model checkpoints, caches, or local environments. See `docs/data-and-artifacts.md` for ignored paths and allowed small demo fixtures.
