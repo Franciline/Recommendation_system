@@ -82,7 +82,7 @@ Recommended final layout:
   - Replace `from ... import *` with explicit imports to make dependencies and public APIs clear.
   - Compatibility wrappers still use wildcard re-exports intentionally.
 - [ ] Split oversized modules.
-  - `evaluation_bigrams_func.py` is about 770 lines and should be divided into extraction, scoring, and plotting/evaluation helpers.
+  - Bigram summary/plot helpers were moved to `evaluation/bigram_summary.py`; `evaluation/bigrams.py` still needs more extraction/scoring splits.
   - `evaluation.py` and `evaluation_weight.py` duplicate concepts; merge shared hide/predict/metric code.
 
 ### `src` cleanup

@@ -56,7 +56,7 @@ select = ["E", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/boardgames_recsys/evaluation/bigrams.py" = ["B007", "B905", "F841", "I001"]
+"src/boardgames_recsys/evaluation/bigrams.py" = ["B007", "B905", "F401", "F841", "I001"]
 "src/boardgames_recsys/evaluation/ratings.py" = ["F401", "F811", "I001"]
 "src/boardgames_recsys/evaluation/weighted.py" = ["F401", "F811", "I001"]
 "src/boardgames_recsys/models/collaborative_filtering.py" = ["F401", "I001"]
