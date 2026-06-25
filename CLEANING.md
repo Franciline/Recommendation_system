@@ -24,6 +24,9 @@ Recommended final layout:
 ├── docs/
 │   ├── report.md
 │   └── app.md
+├── config/
+│   └── ollama/
+│       └── Modelfile
 ├── src/
 │   └── boardgames_recsys/
 │       ├── __init__.py
@@ -79,7 +82,7 @@ Recommended final layout:
   - `evaluation.py`, `evaluation_weight.py`, `evaluation_bigrams_func.py` -> `evaluation/`
 - [v] Remove wildcard imports from reusable code.
   - Replace `from ... import *` with explicit imports to make dependencies and public APIs clear.
-  - Compatibility wrappers still use wildcard re-exports intentionally.
+  - Legacy compatibility wrappers were removed after imports were migrated.
 - [v] Split oversized modules.
   - Bigram summary, filtering, and neighbor-selection helpers were moved out of `evaluation/bigrams.py`.
   - `evaluation.py` and `evaluation_weight.py` duplicate concepts; shared hide/predict/metric code was merged into `evaluation/ratings.py`.

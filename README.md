@@ -10,6 +10,7 @@ Research project on explainable recommendation systems for board games. Source d
 - `src/boardgames_recsys/evaluation/`: rating, weighted, and bigram evaluation helpers.
 - `src/boardgames_recsys/text/`: text filtering, lemmatization, embedding, and LLM helpers.
 - `src/boardgames_recsys/app/`: Dash application.
+- `config/ollama/`: optional local Ollama model configuration.
 - `notebooks/01_cleaning/`: data cleaning notebooks.
 - `notebooks/02_exploration/`: exploratory analysis and visualization notebooks.
 - `notebooks/03_models/`: modeling, clustering, embedding, and LLM notebooks.

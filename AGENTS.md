@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Reusable Python code lives in `src/boardgames_recsys/`, split into `data/`, `models/`, `evaluation/`, `text/`, and `app/`. Runtime app data lives in `data/app/`. Notebooks are grouped by workflow under `notebooks/01_cleaning/` through `notebooks/05_app_generation/`. Reports and videos live in `reports/`; maintenance notes live in `docs/`; tests live in `tests/`.
+Reusable Python code lives in `src/boardgames_recsys/`, split into `data/`, `models/`, `evaluation/`, `text/`, and `app/`. Runtime app data lives in `data/app/`; optional Ollama model config lives in `config/ollama/`. Notebooks are grouped by workflow under `notebooks/01_cleaning/` through `notebooks/05_app_generation/`. Reports and videos live in `reports/`; maintenance notes live in `docs/`; tests live in `tests/`.
 
 ## Build, Test, and Development Commands
 
