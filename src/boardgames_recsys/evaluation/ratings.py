@@ -107,7 +107,7 @@ def _treat_user(user_ind: int, all_hidden_users: np.array, all_hidden_games: np.
 
 
 def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
-                           metric: str, dist_type: str, k: int = None) -> tuple[float, float, int]:
+                           metric: str, dist_type: str, k: int = None, rev_w=False) -> tuple[float, float, int]:
     """Evaluate quality of rating's prediction by hiding 20% of all existing ratings anywhere in User-game matrix.
 
     Parameters
@@ -145,6 +145,21 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
     users_hidden, games_hidden = _hide_ratings_full_matrix(ratings_hidden, mask_hidden, percentage=0.2)
     # recalc similarity matrix
     sim_matrix_hidden = calc_distance_matrix(ratings_hidden.tocsr(), mask_hidden.tocsr(), dist_type)
+
+    if rev_w:
+        users_reviews = np.asarray(mask_hidden.sum(axis=1)).ravel()
+        denominator = np.maximum.outer(users_reviews, users_reviews)
+        review_weights = np.divide(
+            np.minimum.outer(users_reviews, users_reviews),
+            denominator,
+            out=np.zeros_like(denominator, dtype=float),
+            where=denominator != 0,
+        )
+        if isinstance(sim_matrix_hidden, np.ndarray):
+            sim_matrix_hidden = sim_matrix_hidden * review_weights
+        else:
+            sim_matrix_hidden = sim_matrix_hidden.multiply(review_weights).tocsr()
+
     print(f"Number of hidden ratings : {users_hidden.size} ({matrix_ratings.data.size} existing ratings)")
     # hide 20% of his games
     treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=['f', 'f', 'i'])
@@ -215,7 +230,7 @@ def hide_ratings(matrix_ratings, mask_ratings, user_ind, percentage: float = 0.3
     return games_to_hide
 
 
-def recalc_cos_similarity(user_ind: int, matrix_ratings, similarity_matrix: np.ndarray) -> None:
+def recalc_cos_similarity(user_ind: int, matrix_ratings, similarity_matrix: np.ndarray, users_reviews=None) -> None:
     """
     Recalculate cosine similarity matrix only for user_ind row, column.
     Modify INPLACE similarity_matrix (only column and row indicated by 'user ind')
@@ -232,11 +247,16 @@ def recalc_cos_similarity(user_ind: int, matrix_ratings, similarity_matrix: np.n
 
     new_distance = cosine_distances(matrix_ratings[user_ind].reshape(1, -1), matrix_ratings)[0]
     # for user in range(matrix_ratings.shape[0]):
+    if users_reviews is not None:
+        new_distance = new_distance * \
+            np.minimum.outer(users_reviews[user_ind], users_reviews) * \
+            np.maximum.outer(users_reviews[user_ind], users_reviews)
+
     similarity_matrix[:, user_ind] = new_distance
     similarity_matrix[user_ind, :] = new_distance
 
 
-def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similarity_matrix: lil_array) -> None:
+def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similarity_matrix: lil_array, users_reviews=None) -> None:
     R, M = matrix_ratings, mask_ratings
     UR, UM = R[user_ind], M[user_ind]
 
@@ -248,12 +268,16 @@ def recalc_eucl_similarity(user_ind: int, matrix_ratings, mask_ratings, similari
     inverse_weights = csr_array((1/weights.data, weights.indices, weights.indptr), shape=weights.shape)
     eucl_squared_ponder = inverse_weights.multiply(eucl_squared).maximum(0).sqrt()
 
+    if users_reviews is not None:
+        eucl_squared_ponder = eucl_squared_ponder * np.minimum.outer(users_reviews[user_ind], users_reviews) * \
+            np.maximum.outer(users_reviews[user_ind], users_reviews)
+
     similarity_matrix[user_ind, :] = eucl_squared_ponder.toarray()
     similarity_matrix[:, user_ind] = eucl_squared_ponder.toarray()
 
 
 def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
-               similarity_matrix: csr_array, metric: str, dist_type: str, k=None) -> tuple[float, float]:
+               similarity_matrix: csr_array, metric: str, dist_type: str, users_reviews=None, k=None) -> tuple[float, float]:
     """
     Calculate RMSE/MAE for predicted ratings [these ratings were hidden] for 'user' (30% of all games that 'user' has rated)
     TODO: method 2 to evaluate -> hide randomly in a matrix.
@@ -299,6 +323,8 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
 
     # hide games, modify lil_ratings, lil_mask_ratings in place
     hidden_games = hide_ratings(R, M, user)
+    if users_reviews is not None:
+        users_reviews[user] -= len(hidden_games)
     # modify dok_similarity for this row
 
     if isinstance(similarity_matrix, np.ndarray):
@@ -309,9 +335,9 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
     # Recacl similarity_matrix (S) ONLY for USER row, column
     match dist_type:
         case "euclidean":
-            recalc_eucl_similarity(user, R, M, S)
+            recalc_eucl_similarity(user, R, M, S, users_reviews)
         case "cos":
-            recalc_cos_similarity(user, R, S)
+            recalc_cos_similarity(user, R, S, users_reviews)
 
     # find similar users
     similar_users = get_KNN(S, k=k, user_ind=user)
@@ -332,6 +358,9 @@ def calc_error(user: int, matrix_ratings: csr_array, mask_ratings: csr_array,
             case "rmse_mae":
                 error = root_mean_squared_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval]), \
                     mean_absolute_error(matrix_ratings[user, to_eval].toarray(), all_ratings[to_eval])
+
+    if users_reviews is not None:
+        users_reviews[user] += len(hidden_games)
 
     # restore rows
     R[user] = old_user_ratings

@@ -81,9 +81,9 @@ Recommended final layout:
 - [v] Remove wildcard imports from reusable code.
   - Replace `from ... import *` with explicit imports to make dependencies and public APIs clear.
   - Compatibility wrappers still use wildcard re-exports intentionally.
-- [ ] Split oversized modules.
-  - Bigram summary/plot helpers were moved to `evaluation/bigram_summary.py`; `evaluation/bigrams.py` still needs more extraction/scoring splits.
-  - `evaluation.py` and `evaluation_weight.py` duplicate concepts; merge shared hide/predict/metric code.
+- [v] Split oversized modules.
+  - Bigram summary, filtering, and neighbor-selection helpers were moved out of `evaluation/bigrams.py`.
+  - `evaluation.py` and `evaluation_weight.py` duplicate concepts; shared hide/predict/metric code was merged into `evaluation/ratings.py`.
 
 ### `src` cleanup
 
