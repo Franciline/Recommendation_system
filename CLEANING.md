@@ -100,19 +100,19 @@ Recommended final layout:
 
 ### Notebook organization
 
-- [ ] Consolidate all notebooks under `notebooks/` by workflow stage.
+- [v] Consolidate all notebooks under `notebooks/` by workflow stage.
   - `data_cleaning_analysis/jeux_cleaning.ipynb` -> `notebooks/01_cleaning/`
   - `data_visualization/*.ipynb` -> `notebooks/02_exploration/`
   - model training and clustering notebooks -> `notebooks/03_models/`
   - evaluation notebooks -> `notebooks/04_evaluation/`
   - app data generation notebooks -> `notebooks/05_app_generation/`
-- [ ] Rename notebooks with numeric prefixes and descriptive names, for example `04_nnmf_matrix_eval.ipynb`.
+- [v] Rename notebooks with numeric prefixes and descriptive names, for example `04_nnmf_matrix_eval.ipynb`.
 - [ ] Strip notebook outputs before committing future changes.
   - Configure `nbstripout` or a pre-commit hook through `uv`.
 
 ### Data and artifact policy
 
-- [ ] Move `Project_Report.pdf` and `Preview_video.mp4` to `reports/`.
+- [v] Move `Project_Report.pdf` and `Preview_video.mp4` to `reports/`.
 - [ ] Decide which generated files must stay in Git.
   - Keep small demo fixtures needed to run the app.
   - Move large reproducible outputs such as `generated_data/comments_stemmed.csv` to ignored `data/processed/` unless needed for review.
