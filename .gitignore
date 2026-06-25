@@ -1,8 +1,25 @@
-trictrac_database/
-database_cleaned/
+# Local environments and tooling
+.venv/
+uv.lock
+
+# OS/editor noise
+.DS_Store
 .DS_store
 __pycache__/
-*.csv
-**.csv
-!app_interactive/games_info.csv
-!app_interactive/users_info.csv
+*.py[cod]
+.ipynb_checkpoints/
+
+# Local/raw data
+trictrac_database/
+database_cleaned/
+data/raw/
+data/interim/
+data/processed/
+
+# Large generated artifacts
+generated_data/comments_stemmed.csv
+
+# Model/checkpoint caches
+*.parquet
+*.pkl
+*.joblib
