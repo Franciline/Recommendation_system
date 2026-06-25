@@ -2,6 +2,10 @@
 
 Research project on explainable recommendation systems for board games. Source data was scraped from TricTrac in early 2023. The final report and demo video live in `reports/`.
 
+## App Preview
+
+![Dash app preview](reports/app-screenshot.png)
+
 ## Repository Layout
 
 - `src/boardgames_recsys/`: reusable Python package.

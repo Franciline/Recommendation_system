@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pydeck as pdk
 from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
-from dash_extensions import Lottie
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parents[2]
@@ -88,6 +87,25 @@ def recalc_view(points, game_info, initial_view_state):
     return view
 
 
+def _selected_user_info(user_index):
+    if user_index in (None, ""):
+        return None
+
+    try:
+        user_index = int(user_index)
+    except (TypeError, ValueError):
+        return None
+
+    user_rows = users_info[users_info["User index"] == user_index]
+    if user_rows.empty:
+        return None
+    return user_rows.iloc[0]
+
+
+def _rating_tooltip():
+    return {"html": "<b>Note du jeu:</b> {name}"}
+
+
 n_clusters = 30  # -> 30 colors to generate
 games_tsne = np.load(APP_DATA_DIR / "tsne_pushed.npy", mmap_mode="r")  # TSNE 3D
 clusters = np.load(APP_DATA_DIR / "clusters.npy", mmap_mode="r")  # Clusters assignment
@@ -100,7 +118,6 @@ users_info = pd.read_json(APP_DATA_DIR / "users_info.json", orient="records")
 games_info = pd.read_json(APP_DATA_DIR / "games_info.json", orient="records")
 summaries = pd.read_json(APP_DATA_DIR / "summaries.json", orient="records")
 
-special_user_comments = pd.read_json(APP_DATA_DIR / "special_user_comments.json", orient="records")
 summaries_games_indices = [405, 503, 689, 985, 1380]
 
 # For themes-dropdown
@@ -123,15 +140,6 @@ themes = {
 themes_inverse = {cluster: theme for theme, clusters in themes.items() for cluster in clusters}
 # themes_names = games_info["name"]
 colors_points = games_info["color"]
-
-# For animation fireworks
-fw_hidden = dict(
-    loop=False, autoplay=False, style={"display": "none", "position": "absolute", "left": "15%", "top": "10%"}
-)
-fw_shown = dict(
-    loop=False, autoplay=True, style={"display": "block", "position": "absolute", "left": "15%", "top": "10%"}
-)
-special_index = 39  # index
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], assets_folder=str(BASE_DIR / "assets"))
 
@@ -156,23 +164,17 @@ app.layout = html.Div(
         dcc.Store(id="current-user", data=""),
         # interval to allow animation of closing dropdown-reco-games
         dcc.Interval(id="clear-dropdown-interval", interval=400, n_intervals=0, disabled=True),
-        dcc.Interval(id="delete-animation", interval=2800, n_intervals=0, disabled=True),
         html.Div(
             [
                 # Header when only one cluster is shown
                 html.Div(children="Tous les clusters", id="cluster-theme-header", className="cluster-theme-header"),
-                Lottie(
-                    id="fireworks",
-                    options=fw_hidden,
-                    url="https://lottie.host/7be84abc-372f-4d26-9794-96ba22ca6f6d/Cx1QOvmfIU.json",
-                ),
                 html.Div(
                     [
                         dash_deck.DeckGL(
                             id="tsne",
                             data=deck.to_json(),
                             tooltip={"text": "{name}"},
-                            # style={"flex": "1", "height": "100%"},
+                            style={"width": "100%", "height": "100%"},
                             enableEvents=["click", "hover"],
                         )
                     ],
@@ -183,6 +185,7 @@ app.layout = html.Div(
                         "overflow": "hidden",
                         "position": "relative",
                         "width": "50vw",
+                        "height": "100vh",
                     },
                 ),
                 # Right sidebar
@@ -219,8 +222,6 @@ app.layout = html.Div(
                                             options=[{"label": "Choisir un profil", "value": ""}]
                                             + [
                                                 {"label": f"User {username}", "value": index}
-                                                if index != special_index
-                                                else {"label": f"🎉User {username}🎉", "value": index}
                                                 for username, index in users_info[
                                                     ["Username", "User index"]
                                                 ].itertuples(index=False)
@@ -408,7 +409,6 @@ def display_game_info(click_info):
     Output("tsne", "data"),
     Output("dropdown-reco-games", "className", allow_duplicate=True),
     Output("button-reco-games", "className", allow_duplicate=True),
-    Output("fireworks", "options", allow_duplicate=True),
     Input("mode-button", "n_clicks"),  # n_clicks is not used, but Dash demands non empty property
     State("explore-mode", "data"),
     State("plotted-data", "data"),
@@ -425,7 +425,7 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
 
     global themes, games_info, colors_points, initial_view_state
     if click_info is None:
-        return (no_update,) * 8
+        return (no_update,) * 7
 
     # points = games_info[games_info["game index"].isin(plotted_games_index)]
     # view = recalc_view(points, games_info, initial_view_state)
@@ -433,20 +433,11 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
 
     # Exploration mode -> go to Reco mode
     if explore_mode:
-        common = (
-            False,
-            "",
-            "🔁 Exploration",
-            False,
-        )
-        if current_user == special_index:
-            return *common, *(no_update,) * 3, fw_hidden
-        return *common, *(no_update,) * 4
+        return False, "", "🔁 Exploration", False, no_update, no_update, no_update
 
     # Reco mode -> go to Exploration mode. Dropdown : cluster themes.
     # Points will be replotted by 'get_user_tsne'. Same for changed in 'games_info'
-    games_info = games_info.drop(columns="comment", errors="ignore")
-    return True, "", "🔁 Recommandation", True, no_update, "dropdown-reco-games", "button-reco-games", no_update
+    return True, "", "🔁 Recommandation", True, no_update, "dropdown-reco-games", "button-reco-games"
 
 
 @app.callback(
@@ -456,17 +447,13 @@ def change_mode(click_info, explore_mode, plotted_games_index, current_user):
     Output("button-reco-games", "disabled"),
     Output("dropdown-reco-games", "className"),
     Output("button-reco-games", "className"),
-    Output("fireworks", "options", allow_duplicate=True),
-    Output("delete-animation", "disabled", allow_duplicate=True),
     Output("button-reco-games", "n_clicks"),
     Input("users-dropdown", "value"),
     State("plotted-data", "data"),
-    # State('explore-mode', 'data'),
-    State("delete-animation", "n_intervals"),
     State("current-cluster", "data"),
     prevent_initial_call=True,
 )
-def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster):
+def get_user_tsne(user_index, plotted_games_index, current_cluster):
     """Replot plotted games to change their color based on predicted ratings with NNMF
 
     Note :
@@ -476,7 +463,7 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     global initial_view_state, games_info
 
     if user_index is None or plotted_games_index is None:
-        return (no_update,) * 8
+        return (no_update,) * 7
 
     points = games_info[games_info["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
@@ -497,8 +484,6 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
             True,
             "dropdown-reco-games",
             "button-reco-games",
-            fw_hidden,
-            True,
             no_update,
         )
 
@@ -507,6 +492,11 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     points = games_info[games_info["game index"].isin(plotted_games_index)]
     view = recalc_view(points, games_info, initial_view_state)
 
+    user_info = _selected_user_info(user_index)
+    if user_info is None:
+        return (no_update,) * 7
+
+    user_index = int(user_info["User index"])
     ratings = nmf_pred[user_index, :]
 
     # RGB. Rating 0 = red, Rating 10 = green
@@ -514,26 +504,19 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     green = (255 * ratings).astype(int)
     blue = np.zeros_like(red)
 
-    if (user_index == special_index) and ("comment" not in games_info.columns):
-        games_info = games_info.merge(special_user_comments, on="game index")
-
     # Reassign colors
     colors = np.stack([red, green, blue], axis=1).tolist()
     games_info["color"] = colors
 
     # Color rated games to blue
-    user_info = users_info[users_info["User index"] == user_index]
-
-    mask = games_info["game index"].isin(user_info["Rated games index"].item())
+    mask = games_info["game index"].isin(user_info["Rated games index"])
     games_info.loc[mask, "color"] = games_info.loc[mask, "color"].apply(lambda _: [0, 0, 255])
 
     # Top 5 games are rose (fuxia)
-    mask = games_info["game index"].isin(user_info["Top games"].item())
+    mask = games_info["game index"].isin(user_info["Top games"])
     games_info.loc[mask, "color"] = games_info.loc[mask, "color"].apply(lambda _: [255, 0, 161])
 
-    games_info.loc[:, "name"] = np.round(
-        np.clip(nmf_pred[user_index, :] * 8 + 2, 0, 10), 1
-    )  # Predicted rating on hover
+    games_info.loc[:, "name"] = np.round(np.clip(nmf_pred[user_index, :] * 8 + 2, 0, 10), 1).astype(str)
 
     points = games_info[games_info["game index"].isin(plotted_games_index)]
 
@@ -543,16 +526,7 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
 
     common = user_index, False, "dropdown-reco-games", "button-reco-games open"
 
-    if user_index == special_index:  # fireworks only on 1st clickon special user
-        tooltip = {
-            "html": "<b>Note du jeu:</b> {name}<br/>{comment}",
-            "style": {"padding": "10px", "maxWidth": "300px"},
-        }
-        if n_intervals == 0:
-            return new_deck.to_json(), tooltip, *common, fw_shown, False, 0
-        return new_deck.to_json(), tooltip, *common, fw_hidden, True, 0
-
-    return new_deck.to_json(), {"html": "<b>Note du jeu:</b> {name}"}, *common, fw_hidden, True, 0
+    return new_deck.to_json(), _rating_tooltip(), *common, 0
 
 
 @app.callback(
@@ -566,15 +540,19 @@ def get_user_tsne(user_index, plotted_games_index, n_intervals, current_cluster)
     prevent_initial_call=True,
 )
 def show_reco_games(n_clicks, current_classname, current_user_index):
+    if not n_clicks:
+        return no_update, no_update, no_update, no_update
+
     if "open" in current_classname:  # dropdown is open -> close it
         # no_update for children allow to postpone the removal of children and hence allowing the animation
         return "dropdown-reco-games", no_update, "button-reco-games", False
 
-    # TO DO : optimize for 1 search only
+    user_info = _selected_user_info(current_user_index)
+    if user_info is None:
+        return no_update, no_update, no_update, no_update
 
-    # Top 5 games indices (recommended)
-    user_info = users_info[users_info["User index"] == current_user_index]
-    top_games = user_info["Top games"].values[0]
+    current_user_index = int(user_info["User index"])
+    top_games = user_info["Top games"]
 
     children = [
         html.Div(
@@ -668,16 +646,6 @@ def go_to_point(n_clicks, plotted_games_index, current_cluster):
 
     new_deck = get_deck(points, view_state, compute_point_size(points.shape[0]))
     return selected_cluster, new_deck.to_json(), points["game index"].to_list(), themes_inverse[selected_cluster]
-
-
-@app.callback(
-    Output("delete-animation", "disabled", allow_duplicate=True),
-    Output("fireworks", "options", allow_duplicate=True),
-    Input("delete-animation", "n_intervals"),
-    prevent_initial_call=True,
-)
-def delete_animation(n_intervals):
-    return True, fw_hidden
 
 
 def main():

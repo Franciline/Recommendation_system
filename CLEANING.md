@@ -97,7 +97,7 @@ Recommended final layout:
 
 - [v] Move `app_interactive/app.py` to `src/boardgames_recsys/app/app.py`.
 - [v] Move `app_interactive/assets/style.css` with the app package.
-- [v] Move app runtime artifacts (`clusters.npy`, `tsne_pushed.npy`, `nnmf_prediction.npy`, `games_info.json`, `users_info.json`, `summaries.json`, `special_user_comments.json`) to `data/app/` or `src/boardgames_recsys/app/data/`.
+- [v] Move app runtime artifacts (`clusters.npy`, `tsne_pushed.npy`, `nnmf_prediction.npy`, `games_info.json`, `users_info.json`, `summaries.json`) to `data/app/` or `src/boardgames_recsys/app/data/`.
 - [v] Replace working-directory relative paths with paths based on `pathlib.Path(__file__)` or configurable environment variables.
 - [v] Move `app_interactive/data_gen.ipynb` and `comment_gen.ipynb` to `notebooks/05_app_generation/`.
 
