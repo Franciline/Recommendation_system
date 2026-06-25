@@ -4,7 +4,7 @@ import numpy as np
 from scipy.sparse import csr_array, lil_array, dok_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
-from .CF_knn import get_KNN, predict_ratings_baseline, calc_similarity_matrix
+from boardgames_recsys.models.collaborative_filtering import get_KNN, predict_ratings_baseline, calc_similarity_matrix
 from typing import Union
 
 

@@ -72,7 +72,7 @@ Recommended final layout:
   - Python imports were converted from `reco_systems.*` to `boardgames_recsys.*`.
   - A temporary compatibility shim keeps old notebooks runnable while notebook imports are migrated later.
   - [ ] Convert notebook imports from `reco_systems.*` to `boardgames_recsys.*`.
-- [ ] Rename unclear modules while moving them.
+- [v] Rename unclear modules while moving them.
   - `CF_knn.py` -> `models/collaborative_filtering.py`
   - `user_game_matrix.py` -> `data/matrix.py`
   - `filter.py` -> `data/filtering.py`

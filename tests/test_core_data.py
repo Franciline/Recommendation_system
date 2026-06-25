@@ -1,7 +1,7 @@
 import pandas as pd
 
-from boardgames_recsys.filter import filter_df
-from boardgames_recsys.user_game_matrix import get_matrix_user_game
+from boardgames_recsys.data.filtering import filter_df
+from boardgames_recsys.data.matrix import get_matrix_user_game
 
 
 def test_filter_df_removes_sparse_users_and_games():
