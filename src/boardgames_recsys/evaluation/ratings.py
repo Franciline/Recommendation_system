@@ -4,7 +4,7 @@ import numpy as np
 from scipy.sparse import csr_array, lil_array, dok_array
 from sklearn.metrics.pairwise import cosine_distances, nan_euclidean_distances
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
-from boardgames_recsys.models.collaborative_filtering import get_KNN, predict_ratings_baseline, calc_similarity_matrix
+from boardgames_recsys.models.collaborative_filtering import calc_distance_matrix, get_KNN, predict_ratings_baseline
 from typing import Union
 
 
@@ -144,7 +144,7 @@ def calc_error_full_matrix(matrix_ratings: csr_array, mask_ratings: csr_array,
     # hide 20% of games
     users_hidden, games_hidden = _hide_ratings_full_matrix(ratings_hidden, mask_hidden, percentage=0.2)
     # recalc similarity matrix
-    sim_matrix_hidden = calc_similarity_matrix(ratings_hidden.tocsr(), mask_hidden.tocsr(), dist_type)
+    sim_matrix_hidden = calc_distance_matrix(ratings_hidden.tocsr(), mask_hidden.tocsr(), dist_type)
     print(f"Number of hidden ratings : {users_hidden.size} ({matrix_ratings.data.size} existing ratings)")
     # hide 20% of his games
     treat_user_vect = np.vectorize(_treat_user, excluded=(1, 2, 3, 4, 5, 6, 7, 8), otypes=['f', 'f', 'i'])

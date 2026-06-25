@@ -14,35 +14,41 @@ Returns
 """
 
 
-def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
-    """Calculate similarity matrix (users). Similarity is based on a certain type of distance (e.g. euclidean, cosine).
+def calc_distance_matrix(matrix_ratings, mask_matrix, dist_type: str):
+    """Calculate user-user distance matrix.
 
     Parameters
     ----------
         matrix_ratings: csr_array:
             Matrix of ratings with row = user, column = game
         dist_type: str
-            Type of distance which would be used as a metric for similarity between users.
+            Distance metric between users.
     Returns
     -------
 
         if dist_type = "cos", then
-            np.ndarray : Similarity matrix [value = distance]
+            np.ndarray : Distance matrix
         if dist_type = "euclidean", then
-            csr_array  : Similarity matrix [value = distance]
+            csr_array  : Distance matrix
     """
 
-    similarity_matrix = None
+    distance_matrix = None
     match dist_type:
         case "cos":
-            similarity_matrix = cosine_distances(matrix_ratings.tocsr())
+            distance_matrix = cosine_distances(matrix_ratings.tocsr())
         case "euclidean":
-            similarity_matrix = _eucl_sparse(matrix_ratings, mask_matrix)
+            distance_matrix = _eucl_sparse(matrix_ratings, mask_matrix)
         # case "manhattan":
-        #     similarity_matrix = manhattan_distances(matrix_ratings)
+        #     distance_matrix = manhattan_distances(matrix_ratings)
         case _:
             pass
-    return similarity_matrix
+    return distance_matrix
+
+
+def calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type: str):
+    """Deprecated alias for `calc_distance_matrix`."""
+
+    return calc_distance_matrix(matrix_ratings, mask_matrix, dist_type)
 
 
 def _eucl_sparse(matrix_ratings, mask_ratings):
@@ -67,12 +73,12 @@ def _eucl_sparse(matrix_ratings, mask_ratings):
 
 def get_KNN(similarity_matrix: np.ndarray, k: int, user_ind: int) -> np.array:
     """
-    Find k nearest neighbors (similarity = distance wise) for a given user (user_ind).
+    Find k nearest neighbors by distance for a given user.
 
     Parameters
     ----------
         similarity_matrix: np.ndarray
-            Similarity (between users) matrix.
+            User-user distance matrix.
         k: int
 
         user_ind:int
@@ -264,7 +270,7 @@ def distance_evolution(matrix_ratings, mask_matrix, k: int, user_ind: int) -> np
     """
     # Get similarity matrix (get_sim_matrix ?)
 
-    similarity_matrix, _ = calc_similarity_matrix(matrix_ratings, mask_matrix, dist_type="euclidean")
+    similarity_matrix = calc_distance_matrix(matrix_ratings, mask_matrix, dist_type="euclidean")
 
     # Faire knn, extraire dist
     voisins = get_KNN(similarity_matrix, k, user_ind)

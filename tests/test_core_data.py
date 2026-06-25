@@ -1,7 +1,9 @@
 import pandas as pd
+from scipy.sparse import csr_array
 
 from boardgames_recsys.data.filtering import filter_df
 from boardgames_recsys.data.matrix import get_matrix_user_game
+from boardgames_recsys.models.collaborative_filtering import calc_distance_matrix, calc_similarity_matrix
 
 
 def test_filter_df_removes_sparse_users_and_games():
@@ -39,3 +41,14 @@ def test_get_matrix_user_game_returns_ratings_mask_and_associations():
     assert games.tolist() == [10, 20]
     assert ratings.toarray().tolist() == [[8, 7], [0, 9]]
     assert mask.toarray().tolist() == [[1, 1], [0, 1]]
+
+
+def test_calc_distance_matrix_keeps_legacy_alias():
+    ratings = csr_array([[1.0, 0.0], [0.0, 1.0]])
+    mask = csr_array([[1, 0], [0, 1]])
+
+    distance = calc_distance_matrix(ratings, mask, "cos")
+    legacy_distance = calc_similarity_matrix(ratings, mask, "cos")
+
+    assert distance.tolist() == [[0.0, 1.0], [1.0, 0.0]]
+    assert legacy_distance.tolist() == distance.tolist()

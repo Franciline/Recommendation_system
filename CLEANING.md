@@ -86,9 +86,9 @@ Recommended final layout:
 
 ### `src` cleanup
 
-- [ ] Rename modules and functions whose names do not match the logic they implement.
-  - For example, `CF_knn.py` module contains function that is named `calc_similarity_matrix`, however it calculates distance matrix and not a similarity one. Therefore, it should be renamed into, for example, `calc_distance_matrix`.
-- [ ] Rename modules/functions if necessary to make their naming more explicit.
+- [v] Rename modules and functions whose names do not match the logic they implement.
+  - `calc_similarity_matrix` was renamed to `calc_distance_matrix`; the old name remains as a compatibility alias.
+- [v] Rename modules/functions if necessary to make their naming more explicit.
 
 ### Dash app cleanup
 
