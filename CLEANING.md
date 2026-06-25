@@ -3,7 +3,7 @@
 The project has already been finished, but the currently structured repository is extremely messy.
 This file contains TODOs to clean the repository. Once the task in `## TODO` section is done, it should be marked as done, i.e. [v].
 
-## Current problems
+## Problems addressed
 
 - Reusable Python code is in the top-level `reco_systems/` package while an empty `src/` directory already exists.
 - Runtime app code, app-generated data, and data-generation notebooks are mixed together in `app_interactive/`.
@@ -21,7 +21,6 @@ Recommended final layout:
 .
 ├── README.md
 ├── pyproject.toml
-├── uv.lock
 ├── docs/
 │   ├── report.md
 │   └── app.md
@@ -70,7 +69,7 @@ Recommended final layout:
 
 - [v] Move `reco_systems/` into `src/boardgames_recsys/`.
   - Python imports were converted from `reco_systems.*` to `boardgames_recsys.*`.
-  - A temporary compatibility shim keeps old notebooks runnable while notebook imports are migrated later.
+  - The temporary `reco_systems/` compatibility shim was removed after notebook imports were migrated.
   - [v] Convert notebook imports from `reco_systems.*` to `boardgames_recsys.*`.
 - [v] Rename unclear modules while moving them.
   - `CF_knn.py` -> `models/collaborative_filtering.py`
@@ -143,10 +142,10 @@ Recommended final layout:
   - `uv run ruff check .`
   - `uv run boardgames-recsys-app`
 
-### Suggested migration order
+### Completed migration order
 
 1. Finish `pyproject.toml`, create `uv.lock`, and confirm the current app/notebooks can import dependencies.
-2. Move `reco_systems/` into `src/boardgames_recsys/` with temporary import compatibility.
+2. Move `reco_systems/` into `src/boardgames_recsys/`, migrate imports, then delete legacy shims.
 3. Update imports in Python files, then notebooks.
 4. Move app code and data, then fix file loading paths.
 5. Reorganize notebooks and reports.

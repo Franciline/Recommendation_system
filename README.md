@@ -10,7 +10,6 @@ Research project on explainable recommendation systems for board games. Source d
 - `src/boardgames_recsys/evaluation/`: rating, weighted, and bigram evaluation helpers.
 - `src/boardgames_recsys/text/`: text filtering, lemmatization, embedding, and LLM helpers.
 - `src/boardgames_recsys/app/`: Dash application.
-- `reco_systems/`: temporary compatibility shim for older notebooks that still import `reco_systems.*`.
 - `notebooks/01_cleaning/`: data cleaning notebooks.
 - `notebooks/02_exploration/`: exploratory analysis and visualization notebooks.
 - `notebooks/03_models/`: modeling, clustering, embedding, and LLM notebooks.
@@ -61,4 +60,4 @@ uv run --python 3.11 pytest
 uv run --python 3.11 ruff check .
 ```
 
-Some legacy lint categories are temporarily ignored per file in `pyproject.toml` until source cleanup continues.
+Some legacy lint categories are temporarily ignored per file in `pyproject.toml` for research code that was preserved from notebooks.
