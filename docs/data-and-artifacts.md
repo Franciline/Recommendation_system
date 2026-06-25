@@ -8,8 +8,8 @@ This repo should contain source code, small reproducible fixtures, notebooks, an
 - `database_cleaned/`: local cleaned database export; reproducible from raw data and cleaning notebooks.
 - `data/raw/`: raw local inputs. Keep outside Git because provenance and size can vary.
 - `data/interim/`: temporary transformation outputs between cleaning/modeling steps.
-- `data/processed/`: large processed outputs that can be regenerated.
-- `generated_data/comments_stemmed.csv`: generated NLP table; too large for normal Git history.
+- `data/processed/`: large processed outputs that can be regenerated, including local copies such as `comments_stemmed.csv`.
+- `generated_data/comments_stemmed.csv`: legacy location for the generated NLP table; removed from Git because it is too large for normal history.
 - `.venv/`: local Python environment created by `uv`.
 - `.pytest_cache/`, `.ruff_cache/`: local verification caches.
 - `uv.lock`: generated for local reproducibility checks, but intentionally not committed for this research cleanup.

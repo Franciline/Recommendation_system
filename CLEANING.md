@@ -113,7 +113,7 @@ Recommended final layout:
 ### Data and artifact policy
 
 - [v] Move `Project_Report.pdf` and `Preview_video.mp4` to `reports/`.
-- [ ] Decide which generated files must stay in Git.
+- [v] Decide which generated files must stay in Git.
   - Keep small demo fixtures needed to run the app.
   - Move large reproducible outputs such as `generated_data/comments_stemmed.csv` to ignored `data/processed/` unless needed for review.
 - [v] Update `.gitignore`.
